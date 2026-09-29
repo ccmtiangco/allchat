@@ -11,18 +11,14 @@ class ContextLimitExceeded(ValueError):
     pass
 
 
-def _get_owned_conversation(owner, conversation_id, *, lock=False):
+def get_owned_conversation(owner, conversation_id, *, lock=False):
     conversations = Conversation.objects.select_for_update() if lock else Conversation.objects
     return conversations.get(pk=conversation_id, owner=owner)
 
 
-def get_owned_conversation(owner, conversation_id):
-    return _get_owned_conversation(owner, conversation_id)
-
-
 def append_message(owner, conversation_id, role, content, *, provider=None):
     with transaction.atomic():
-        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+        conversation = get_owned_conversation(owner, conversation_id, lock=True)
         return Message.objects.create(
             conversation=conversation,
             role=role,
@@ -37,7 +33,7 @@ def rename_conversation(owner, conversation_id, title):
         raise ValidationError('Conversation titles must contain 1 to 160 characters.')
 
     with transaction.atomic():
-        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+        conversation = get_owned_conversation(owner, conversation_id, lock=True)
         conversation.title = title
         conversation.save(update_fields=('title', 'updated_at'))
         return conversation
@@ -45,7 +41,7 @@ def rename_conversation(owner, conversation_id, title):
 
 def delete_conversation(owner, conversation_id):
     with transaction.atomic():
-        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+        conversation = get_owned_conversation(owner, conversation_id, lock=True)
         usage_requests = list(conversation.usage_requests.select_for_update())
         if usage_requests:
             raise ValidationError('Conversations with usage requests cannot be deleted.')
@@ -53,7 +49,7 @@ def delete_conversation(owner, conversation_id):
 
 
 def _get_latest_unbilled_user_message(owner, conversation_id, message_id):
-    conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+    conversation = get_owned_conversation(owner, conversation_id, lock=True)
     if conversation.usage_requests.exists():
         raise ValidationError('Messages cannot be changed after a usage request exists.')
     message = conversation.messages.select_for_update().get(

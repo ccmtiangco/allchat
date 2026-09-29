@@ -148,7 +148,7 @@ class UsageRequest(models.Model):
         'chat.Message',
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name='usage_request',
     )
     provider = models.CharField(max_length=16, choices=ProviderInterface.choices)
@@ -262,6 +262,13 @@ class UsageRequest(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
+                    ~Q(status='succeeded')
+                    | Q(assistant_message__isnull=False)
+                ),
+                name='successful_usage_has_assistant_message',
+            ),
+            models.CheckConstraint(
+                condition=(
                     Q(
                         status='reconciliation_required',
                         reconciliation_reason__isnull=False,
@@ -285,6 +292,8 @@ class UsageRequest(models.Model):
 
     def clean(self):
         errors = {}
+        if self.status == self.Status.SUCCEEDED and not self.assistant_message_id:
+            errors['assistant_message'] = 'Successful usage must link to its assistant message.'
         if self.user_id and self.conversation_id:
             if not self.conversation.is_owned_by(self.user):
                 errors['conversation'] = 'The conversation must belong to the usage owner.'

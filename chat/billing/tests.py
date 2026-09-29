@@ -43,6 +43,14 @@ class BillingModelAndServiceTests(TestCase):
     def make_request(self, *, key='request-1', provider=ProviderInterface.OPENAI):
         return create_usage_request(self.user, self.conversation, provider, key)[0]
 
+    def make_assistant_message(self, content='Assistant response'):
+        return Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.ASSISTANT,
+            content=content,
+            provider=ProviderInterface.OPENAI,
+        )
+
     def current_balance(self):
         wallet = self.user.wallet
         wallet.refresh_from_db()
@@ -208,7 +216,12 @@ class BillingModelAndServiceTests(TestCase):
         request = self.make_request()
         reserve_usage(request, maximum_input_tokens=50, maximum_output_tokens=0)
 
-        settled = settle_usage(request, 0, 0)
+        settled = settle_usage(
+            request,
+            0,
+            0,
+            assistant_message=self.make_assistant_message(),
+        )
 
         self.assertEqual(settled.status, UsageRequest.Status.SUCCEEDED)
         self.assertEqual(settled.total_tokens, 0)
@@ -266,7 +279,12 @@ class BillingModelAndServiceTests(TestCase):
         request = self.make_request()
         reserve_usage(request, maximum_input_tokens=25, maximum_output_tokens=25)
 
-        result = settle_usage(request, 25, 26)
+        result = settle_usage(
+            request,
+            25,
+            26,
+            assistant_message=self.make_assistant_message(),
+        )
 
         self.assertEqual(result.status, UsageRequest.Status.RECONCILIATION_REQUIRED)
         self.assertEqual(
@@ -296,8 +314,9 @@ class BillingModelAndServiceTests(TestCase):
     def test_repeated_settlement_does_not_duplicate_ledger_entries(self):
         request = self.make_request()
         reserve_usage(request, maximum_input_tokens=15, maximum_output_tokens=35)
-        settled = settle_usage(request, 10, 10)
-        settle_usage(request, 10, 10)
+        assistant_message = self.make_assistant_message()
+        settled = settle_usage(request, 10, 10, assistant_message=assistant_message)
+        settle_usage(request, 10, 10, assistant_message=assistant_message)
 
         self.assertEqual(self.user.wallet.ledger_entries.count(), 4)
         self.assertEqual(settled.charge_micro_usd, 40)
@@ -305,7 +324,12 @@ class BillingModelAndServiceTests(TestCase):
     def test_refunds_are_recorded_and_cannot_exceed_settled_charge(self):
         request = self.make_request()
         reserve_usage(request, maximum_input_tokens=500, maximum_output_tokens=750)
-        settle_usage(request, 500, 500)
+        settle_usage(
+            request,
+            500,
+            500,
+            assistant_message=self.make_assistant_message(),
+        )
         first_refund = refund_usage(
             request,
             500,
@@ -397,18 +421,35 @@ class WalletReservationConcurrencyTests(TransactionTestCase):
             'parallel-settlement',
         )
         reserve_usage(request, maximum_input_tokens=100, maximum_output_tokens=100)
+        assistant_message = Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT,
+            content='Settled response',
+            provider=ProviderInterface.OPENAI,
+        )
         barrier = Barrier(2)
 
-        def settle(request_id):
+        def settle(request_id, assistant_message_id):
             close_old_connections()
             try:
                 barrier.wait(timeout=10)
-                return settle_usage(UsageRequest(pk=request_id), 50, 50).status
+                return settle_usage(
+                    UsageRequest(pk=request_id),
+                    50,
+                    50,
+                    assistant_message=Message(pk=assistant_message_id),
+                ).status
             finally:
                 close_old_connections()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            statuses = list(executor.map(settle, [request.pk, request.pk]))
+            statuses = list(
+                executor.map(
+                    settle,
+                    [request.pk, request.pk],
+                    [assistant_message.pk, assistant_message.pk],
+                )
+            )
 
         self.assertEqual(statuses, [UsageRequest.Status.SUCCEEDED] * 2)
         user.wallet.refresh_from_db()

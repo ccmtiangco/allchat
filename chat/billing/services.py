@@ -149,9 +149,11 @@ def settle_usage(
     input_tokens,
     output_tokens,
     *,
-    assistant_message=None,
+    assistant_message,
     upstream_request_id='',
 ):
+    if assistant_message.pk is None:
+        raise ValueError('A successful usage settlement requires a saved assistant message.')
     charge = calculate_charge_micro_usd(input_tokens, output_tokens)
     with transaction.atomic():
         locked_request = UsageRequest.objects.select_for_update().get(pk=request.pk)
