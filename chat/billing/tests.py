@@ -188,6 +188,7 @@ class BillingModelAndServiceTests(TestCase):
             1_000,
             assistant_message=assistant_message,
             upstream_request_id='proxy-request-1',
+            latency_ms=1_234,
         )
 
         self.assertEqual(settled.status, UsageRequest.Status.SUCCEEDED)
@@ -197,6 +198,7 @@ class BillingModelAndServiceTests(TestCase):
         self.assertEqual(settled.charge_micro_usd, 4_000)
         self.assertEqual(settled.upstream_request_id, 'proxy-request-1')
         self.assertEqual(settled.assistant_message_id, assistant_message.pk)
+        self.assertEqual(settled.latency_ms, 1_234)
         self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD - 4_000)
         wallet = self.user.wallet
         wallet.refresh_from_db()
@@ -276,6 +278,24 @@ class BillingModelAndServiceTests(TestCase):
         self.assertEqual(unknown.charge_micro_usd, 0)
         self.assertEqual(unknown.upstream_request_id, 'ambiguous-upstream-id')
         self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD - 1_000)
+
+    def test_usage_unknown_can_retain_partial_response_and_elapsed_time(self):
+        request = self.make_request()
+        reserve_usage(request, maximum_input_tokens=500, maximum_output_tokens=200)
+        partial = self.make_assistant_message('An incomplete response')
+
+        unknown = mark_usage_unknown(
+            request,
+            upstream_request_id='interrupted-stream-id',
+            assistant_message=partial,
+            latency_ms=2_450,
+        )
+
+        self.assertEqual(unknown.status, UsageRequest.Status.RECONCILIATION_REQUIRED)
+        self.assertEqual(unknown.assistant_message_id, partial.pk)
+        self.assertEqual(unknown.latency_ms, 2_450)
+        self.assertIsNone(unknown.input_tokens)
+        self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD - 1_400)
 
     def test_charge_larger_than_reservation_requires_reconciliation(self):
         request = self.make_request()

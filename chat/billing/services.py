@@ -164,9 +164,12 @@ def settle_usage(
     *,
     assistant_message,
     upstream_request_id='',
+    latency_ms=None,
 ):
     if assistant_message.pk is None:
         raise ValueError('A successful usage settlement requires a saved assistant message.')
+    if latency_ms is not None and (type(latency_ms) is not int or latency_ms < 0):
+        raise ValueError('Latency must be a non-negative integer number of milliseconds.')
     charge = calculate_charge_micro_usd(input_tokens, output_tokens)
     with transaction.atomic():
         locked_request = UsageRequest.objects.select_for_update().get(pk=request.pk)
@@ -187,6 +190,7 @@ def settle_usage(
         locked_request.charge_micro_usd = charge
         locked_request.upstream_request_id = upstream_request_id
         locked_request.assistant_message = assistant_message
+        locked_request.latency_ms = latency_ms
         locked_request.completed_at = timezone.now()
 
         if (
@@ -242,7 +246,15 @@ def fail_before_upstream(request):
         return locked_request
 
 
-def mark_usage_unknown(request, *, upstream_request_id=''):
+def mark_usage_unknown(
+    request,
+    *,
+    upstream_request_id='',
+    assistant_message=None,
+    latency_ms=None,
+):
+    if latency_ms is not None and (type(latency_ms) is not int or latency_ms < 0):
+        raise ValueError('Latency must be a non-negative integer number of milliseconds.')
     with transaction.atomic():
         locked_request = UsageRequest.objects.select_for_update().get(pk=request.pk)
         if (
@@ -256,12 +268,16 @@ def mark_usage_unknown(request, *, upstream_request_id=''):
         locked_request.status = UsageRequest.Status.RECONCILIATION_REQUIRED
         locked_request.reconciliation_reason = UsageRequest.ReconciliationReason.USAGE_UNKNOWN
         locked_request.upstream_request_id = upstream_request_id
+        locked_request.assistant_message = assistant_message
+        locked_request.latency_ms = latency_ms
         locked_request.completed_at = timezone.now()
         locked_request.save(
             update_fields=(
                 'status',
                 'reconciliation_reason',
                 'upstream_request_id',
+                'assistant_message',
+                'latency_ms',
                 'completed_at',
                 'updated_at',
             )

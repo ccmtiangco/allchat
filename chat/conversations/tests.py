@@ -9,7 +9,7 @@ from django.urls import reverse
 from ..billing.models import INITIAL_BALANCE_MICRO_USD, UsageRequest
 from ..billing.services import InsufficientBalance, create_usage_request, fail_before_upstream
 from ..choices import ProviderInterface
-from ..proxy.router import ProxyConfigurationError, ProxyError, ProxyResponse
+from ..proxy.router import ProxyConfigurationError, ProxyError, ProxyResponse, ProxyStreamEvent
 from .models import (
     DEFAULT_CONVERSATION_TITLE,
     MAX_GENERATED_TITLE_LENGTH,
@@ -26,7 +26,7 @@ from .services import (
     get_owned_conversation,
     rename_conversation,
 )
-from .orchestration import submit_message
+from .orchestration import stream_message_turn, submit_message
 
 User = get_user_model()
 
@@ -264,6 +264,39 @@ class ChatOrchestrationTests(TestCase):
         self.assertEqual(result.finish_reason, 'stop')
         self.assertEqual(result.completion_status, 'complete')
         self.assertEqual(result.conversation.messages.count(), 2)
+        self.user.wallet.refresh_from_db()
+        self.assertEqual(self.user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD - 34)
+
+    def test_streamed_turn_sends_deltas_then_settles_final_usage(self):
+        proxy_result = self.response(ProviderInterface.OPENAI, text='Hello there')
+        with patch(
+            'chat.conversations.orchestration.route_stream',
+            return_value=iter(
+                [
+                    ProxyStreamEvent(kind='delta', text='Hello'),
+                    ProxyStreamEvent(kind='delta', text=' there'),
+                    ProxyStreamEvent(kind='complete', result=proxy_result),
+                ]
+            ),
+        ) as route:
+            events = list(
+                stream_message_turn(
+                    user=self.user,
+                    content='Say hello',
+                    provider=ProviderInterface.OPENAI,
+                    idempotency_key='streamed-turn-1',
+                )
+            )
+
+        route.assert_called_once()
+        self.assertEqual([event.kind for event in events], ['started', 'delta', 'delta', 'completed'])
+        self.assertEqual([event.payload['text'] for event in events if event.kind == 'delta'], ['Hello', ' there'])
+        request = UsageRequest.objects.get(idempotency_key='streamed-turn-1')
+        self.assertEqual(request.status, UsageRequest.Status.SUCCEEDED)
+        self.assertEqual(request.assistant_message.content, 'Hello there')
+        self.assertEqual(request.input_tokens, 12)
+        self.assertEqual(request.output_tokens, 5)
+        self.assertIsNotNone(request.latency_ms)
         self.user.wallet.refresh_from_db()
         self.assertEqual(self.user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD - 34)
 
