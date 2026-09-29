@@ -1,6 +1,5 @@
 from django.conf import settings
-from django.contrib.auth.models import AbstractUser
-from django.db import models, transaction
+from django.db import models
 from django.db.models import Q
 
 INITIAL_BALANCE_MICRO_USD = 5_000_000
@@ -51,22 +50,3 @@ class WalletLedgerEntry(models.Model):
 
     def __str__(self):
         return f'{self.get_entry_type_display()}: {self.amount_micro_usd} micro-USD'
-
-
-class User(AbstractUser):
-    def save(self, *args, **kwargs):
-        is_new = self._state.adding
-        using = kwargs.get('using')
-
-        with transaction.atomic(using=using):
-            super().save(*args, **kwargs)
-            if is_new:
-                wallet = Wallet.objects.db_manager(using).create(
-                    user=self,
-                    balance_micro_usd=INITIAL_BALANCE_MICRO_USD,
-                )
-                WalletLedgerEntry.objects.db_manager(using).create(
-                    wallet=wallet,
-                    entry_type=WalletLedgerEntry.EntryType.INITIAL_CREDIT,
-                    amount_micro_usd=INITIAL_BALANCE_MICRO_USD,
-                )
