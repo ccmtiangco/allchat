@@ -75,7 +75,7 @@ from AllChat's existing behavior and accessibility requirements.
   visibility, labels, contrast, and long-message wrapping.
 - [x] Verify that no API key is rendered into HTML and all state-changing forms
   retain CSRF protection.
-- [ ] Merge the feature branch back to `main` only after checks pass, then sync
+- [x] Merge the feature branch back to `main` after checks pass, then sync
   `doc/wiki/README.md` if the user-visible behavior or setup changed.
 
 The full test suite passes (65 tests, 2 skipped) and `python manage.py check`
