@@ -117,6 +117,17 @@ GOOGLE_PROXY_MODEL = os.getenv('GOOGLE_PROXY_MODEL', 'gemini-3.8-flash')
 PROXY_CONNECT_TIMEOUT = int(os.getenv('PROXY_CONNECT_TIMEOUT', '5'))
 PROXY_READ_TIMEOUT = int(os.getenv('PROXY_READ_TIMEOUT', '60'))
 
+if not DEBUG:
+    missing_proxy_keys = [
+        key_name
+        for key_name in ('OPENAI_PROXY_KEY', 'ANTHROPIC_PROXY_KEY', 'GOOGLE_PROXY_KEY')
+        if not os.getenv(key_name)
+    ]
+    if missing_proxy_keys:
+        raise ImproperlyConfigured(
+            f"Missing required provider configuration: {', '.join(missing_proxy_keys)}."
+        )
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -80,3 +84,30 @@ class UserCreationTests(TestCase):
 
         self.assertEqual(user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD)
         self.assertEqual(user.wallet.ledger_entries.count(), 1)
+
+
+class ConfigurationTests(TestCase):
+    def test_production_configuration_reports_missing_key_names_only(self):
+        env = os.environ.copy()
+        env.update(
+            {
+                'DJANGO_DEBUG': 'False',
+                'DJANGO_SECRET_KEY': 'test-secret-that-must-not-be-printed',
+                'OPENAI_PROXY_KEY': '',
+                'ANTHROPIC_PROXY_KEY': '',
+                'GOOGLE_PROXY_KEY': '',
+            }
+        )
+        result = subprocess.run(
+            [sys.executable, '-c', 'import allchat_project.settings'],
+            capture_output=True,
+            check=False,
+            env=env,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('OPENAI_PROXY_KEY', result.stderr)
+        self.assertIn('ANTHROPIC_PROXY_KEY', result.stderr)
+        self.assertIn('GOOGLE_PROXY_KEY', result.stderr)
+        self.assertNotIn('test-secret-that-must-not-be-printed', result.stderr)
