@@ -22,18 +22,24 @@
             {% for usage in usage_requests %}
                 {% if usage.status == "reconciliation_required" %}
                     <aside class="request-notice request-notice--warning">
-                        Usage for request {{ usage.pk }} needs reconciliation. {{ usage.formatted_reservation }} remains reserved; no automatic retry was made.
+                        {% if usage.reconciliation_reason == "usage_unknown" %}
+                            Connection timed out. A temporary hold is under review to prevent an overcharge.
+                        {% else %}
+                            The response is under review to prevent an overcharge.
+                        {% endif %}
                     </aside>
                 {% elif usage.status == "pending" or usage.status == "reserved" %}
-                    <aside class="request-notice">Request {{ usage.pk }} is {{ usage.get_status_display|lower }}.</aside>
+                    <aside class="request-notice">Processing message (funds temporarily held)...</aside>
                 {% elif usage.status == "failed_before_upstream" %}
-                    <aside class="request-notice">A request failed before reaching the provider. No usage was charged.</aside>
+                    <aside class="request-notice">Message could not be sent. No charge was made.</aside>
+                {% elif usage.status == "reconciled_released" %}
+                    <aside class="request-notice">The temporary hold has been released after review.</aside>
                 {% endif %}
             {% endfor %}
 
-            <div class="message-list" aria-label="Messages in this conversation" aria-live="polite" aria-relevant="additions text">
+            <div class="message-list" data-message-list aria-label="Messages in this conversation" aria-live="polite" aria-relevant="additions text">
                 {% for message in chat_messages %}
-                    <article class="message-row message-row--{{ message.role }}">
+                    <article class="message-row message-row--{{ message.role }}" data-message-id="{{ message.pk }}">
                         {% if message.role == "assistant" %}
                             <div class="assistant-response">
                                 <header class="assistant-message-header">
@@ -42,8 +48,14 @@
                                     {% if message.provider %}
                                         <span class="provider-badge">{{ message.get_provider_display }}</span>
                                     {% endif %}
+                                    {% if message.usage_request and message.usage_request.latency_ms != None %}
+                                        <span class="response-latency">Response {{ message.usage_request.latency_ms }} ms</span>
+                                    {% endif %}
                                     <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:'M j, H:i' }}</time>
                                 </header>
+                                {% if message.usage_request and message.usage_request.status == "reconciliation_required" or message.usage_request and message.usage_request.status == "reconciled_released" %}
+                                    <p class="partial-response-label">Partial response</p>
+                                {% endif %}
                                 <div class="message-content">{{ message.content|safe_markdown }}</div>
                                 {% if message.usage_request %}
                                     {% with usage=message.usage_request %}

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}AllChat{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
+    {% if user.is_authenticated %}<script src="{% static 'chat/chat.js' %}" defer></script>{% endif %}
 </head>
 <body class="{% if user.is_authenticated %}authenticated-body{% else %}public-body{% endif %}">
     {% if user.is_authenticated %}

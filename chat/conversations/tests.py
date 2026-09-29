@@ -289,7 +289,10 @@ class ChatOrchestrationTests(TestCase):
             )
 
         route.assert_called_once()
-        self.assertEqual([event.kind for event in events], ['started', 'delta', 'delta', 'completed'])
+        self.assertEqual(
+            [event.kind for event in events],
+            ['started', 'reserved', 'delta', 'delta', 'completed'],
+        )
         self.assertEqual([event.payload['text'] for event in events if event.kind == 'delta'], ['Hello', ' there'])
         request = UsageRequest.objects.get(idempotency_key='streamed-turn-1')
         self.assertEqual(request.status, UsageRequest.Status.SUCCEEDED)
@@ -336,6 +339,44 @@ class ChatOrchestrationTests(TestCase):
         self.assertContains(detail, '$0.000034')
         self.assertContains(detail, '$4.999966')
         self.assertContains(detail, 'View test prompt')
+
+    def test_stream_post_emits_sse_events_without_redirecting(self):
+        self.client.force_login(self.user)
+        proxy_result = self.response(ProviderInterface.OPENAI, text='Streamed answer')
+        with patch(
+            'chat.conversations.orchestration.route_stream',
+            return_value=iter(
+                [
+                    ProxyStreamEvent(kind='delta', text='Streamed '),
+                    ProxyStreamEvent(kind='delta', text='answer'),
+                    ProxyStreamEvent(kind='complete', result=proxy_result),
+                ]
+            ),
+        ) as route:
+            response = self.client.post(
+                reverse('chat:stream_message'),
+                {
+                    'content': 'Stream this answer',
+                    'provider': ProviderInterface.OPENAI,
+                    'conversation_id': '',
+                    'idempotency_key': 'stream-view-turn',
+                },
+            )
+            body = b''.join(response.streaming_content).decode()
+
+        route.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.streaming)
+        self.assertTrue(response['Content-Type'].startswith('text/event-stream'))
+        self.assertNotIn('Location', response)
+        self.assertIn('event: started', body)
+        self.assertIn('event: reserved', body)
+        self.assertIn('event: delta', body)
+        self.assertIn('event: completed', body)
+        self.assertIn('assistant_html', body)
+        request = UsageRequest.objects.get(idempotency_key='stream-view-turn')
+        self.assertEqual(request.status, UsageRequest.Status.SUCCEEDED)
+        self.assertIsNotNone(request.latency_ms)
 
     def test_provider_can_change_between_turns(self):
         with patch(
@@ -479,6 +520,12 @@ class ChatOrchestrationTests(TestCase):
         self.assertContains(response, 'aria-label="Workspace navigation"')
         self.assertContains(response, 'Sessions')
         self.assertContains(response, 'class="composer-toolbar"')
+        self.assertContains(response, 'data-stream-url="/messages/stream/"')
+        self.assertContains(response, 'data-stream-timer')
+        self.assertContains(
+            response,
+            'Select an API format (OpenAI, Anthropic, or Google). Note: All routes are currently powered by DeepSeek Flash via the proxy.',
+        )
 
     def test_conversation_page_renders_roles_usage_and_exact_debit(self):
         self.client.force_login(self.user)

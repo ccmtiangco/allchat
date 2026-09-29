@@ -41,7 +41,7 @@
             <nav class="conversation-list" aria-label="Conversation history">
                 {% for item in conversations %}
                     <a class="conversation-link{% if current_conversation and current_conversation.pk == item.pk %} is-current{% endif %}"
-                       href="{% url 'chat:conversation' item.pk %}"{% if current_conversation and current_conversation.pk == item.pk %} aria-current="page"{% endif %}>
+                       href="{% url 'chat:conversation' item.pk %}" data-conversation-id="{{ item.pk }}"{% if current_conversation and current_conversation.pk == item.pk %} aria-current="page"{% endif %}>
                         <span class="conversation-link-title">{{ item.title }}</span>
                         <time datetime="{{ item.updated_at|date:'c' }}">{{ item.updated_at|date:'M j, Y' }}</time>
                     </a>

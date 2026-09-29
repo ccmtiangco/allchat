@@ -1,4 +1,4 @@
-<form class="message-form" method="post" action="{% url 'chat:send_message' %}">
+<form class="message-form" method="post" action="{% url 'chat:send_message' %}" data-stream-url="{% url 'chat:stream_message' %}">
     {% csrf_token %}
     {{ form.conversation_id }}
     {{ form.idempotency_key }}
@@ -10,6 +10,11 @@
             {% if form.provider.errors %}<div class="form-errors">{{ form.provider.errors }}</div>{% endif %}
         </div>
         <p class="form-disclosure">$0.002 per 1,000 combined tokens <span aria-hidden="true">·</span> Up to {{ max_output_tokens }} output tokens</p>
+        <div class="stream-feedback">
+            <span class="typing-indicator" data-stream-indicator hidden aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="stream-status" data-stream-status role="status" aria-live="polite">Ready to chat.</span>
+            <time class="stream-timer" data-stream-timer aria-label="Elapsed response time" hidden>00:00.0</time>
+        </div>
     </div>
     <div class="composer-surface">
         <div class="form-field message-field">
@@ -21,5 +26,5 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 4 16 8-16 8 2.5-8z"/><path d="M6.5 12H20"/></svg>
         </button>
     </div>
-    <small class="route-disclosure">These are provider-compatible routes; the proxy may use a shared upstream model.</small>
+    <small class="route-disclosure">Select an API format (OpenAI, Anthropic, or Google). Note: All routes are currently powered by DeepSeek Flash via the proxy.</small>
 </form>

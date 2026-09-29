@@ -16,12 +16,16 @@
                 <strong>{{ wallet.formatted_balance }}</strong>
             </div>
         </header>
-        <div class="empty-chat-state">
-            <span class="empty-chat-mark" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H10l-4.5 4v-4.2A2.75 2.75 0 0 1 4 13.25z"/><path d="M8 8.5h8M8 11.5h5"/></svg>
-            </span>
-            <h2>What would you like to explore?</h2>
-            <p>Send a message to start. You can choose a compatible route for each turn.</p>
+        <div class="transcript-scroll" role="region" aria-label="Conversation transcript">
+            <div class="message-list" data-message-list aria-label="Messages in this conversation" aria-live="polite" aria-relevant="additions text">
+                <div class="empty-chat-state">
+                    <span class="empty-chat-mark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H10l-4.5 4v-4.2A2.75 2.75 0 0 1 4 13.25z"/><path d="M8 8.5h8M8 11.5h5"/></svg>
+                    </span>
+                    <h2>What would you like to explore?</h2>
+                    <p>Send a message to start. You can choose a compatible route for each turn.</p>
+                </div>
+            </div>
         </div>
         <footer class="chat-composer-dock">
             {% include "chat/_message_form.html" %}

@@ -271,10 +271,15 @@ def _existing_stream_events(prepared):
             'conversation_id': prepared.conversation.pk,
             'conversation_title': prepared.conversation.title,
             'user_message_id': prepared.user_message.pk,
+            'user_text': prepared.user_message.content,
             'usage_request_id': request.pk,
             'status': request.status,
             'assistant_message_id': assistant_message.pk if assistant_message else None,
             'assistant_text': assistant_message.content if assistant_message else '',
+            'partial_response': bool(
+                assistant_message
+                and request.reconciliation_reason == UsageRequest.ReconciliationReason.USAGE_UNKNOWN
+            ),
             'provider': request.provider,
             'latency_ms': request.latency_ms,
             'input_tokens': request.input_tokens,
@@ -282,6 +287,13 @@ def _existing_stream_events(prepared):
             'total_tokens': request.total_tokens,
             'formatted_charge': request.formatted_charge,
             'reconciliation_reason': request.reconciliation_reason,
+            'message': (
+                'Connection timed out. A temporary hold is under review to prevent an overcharge.'
+                if request.reconciliation_reason == UsageRequest.ReconciliationReason.USAGE_UNKNOWN
+                else 'The response is under review to prevent an overcharge.'
+                if request.status == UsageRequest.Status.RECONCILIATION_REQUIRED
+                else ''
+            ),
         },
     )
 
@@ -330,6 +342,14 @@ def stream_message_turn(*, user, content, provider, idempotency_key, conversatio
         )
         return
 
+    yield ChatStreamEvent(
+        kind='reserved',
+        payload={
+            'usage_request_id': request.pk,
+            'reserved_micro_usd': request.reserved_micro_usd,
+        },
+    )
+
     request_started = monotonic()
     text_parts = []
     stream = route_stream(provider, prepared.messages, request.reserved_output_tokens)
@@ -363,7 +383,7 @@ def stream_message_turn(*, user, content, provider, idempotency_key, conversatio
             payload={
                 'conversation_id': prepared.conversation.pk,
                 'usage_request_id': failed.pk,
-                'message': 'The selected provider is not configured. No provider request was sent.',
+                'message': 'This route is not available right now. No charge was made.',
             },
         )
         return
@@ -385,9 +405,10 @@ def stream_message_turn(*, user, content, provider, idempotency_key, conversatio
                 'usage_request_id': unknown.pk,
                 'assistant_message_id': unknown.assistant_message_id,
                 'assistant_text': ''.join(text_parts),
+                'partial_response': bool(text_parts),
                 'latency_ms': unknown.latency_ms,
                 'reconciliation_reason': unknown.reconciliation_reason,
-                'message': 'The response or its usage could not be confirmed. Funds remain reserved for reconciliation; the request was not retried.',
+                'message': 'Connection timed out. A temporary hold is under review to prevent an overcharge.',
             },
         )
         return
@@ -430,7 +451,8 @@ def stream_message_turn(*, user, content, provider, idempotency_key, conversatio
         payload.update(
             {
                 'reconciliation_reason': settled.reconciliation_reason,
-                'message': 'Usage exceeded its reservation and is awaiting reconciliation.',
+                'partial_response': False,
+                'message': 'The response is under review to prevent an overcharge.',
             }
         )
         yield ChatStreamEvent(kind='reconciliation_required', payload=payload)
