@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load chat_markdown %}
 
 {% block title %}{{ conversation.title }} | AllChat{% endblock %}
 
@@ -6,61 +7,77 @@
 <div class="chat-workspace">
     {% include "chat/_conversation_sidebar.html" with current_conversation=conversation %}
     <section class="chat-panel conversation-panel" aria-labelledby="conversation-title">
-        <header class="chat-panel-header conversation-title-bar">
-            <div>
-                <p class="eyebrow">Conversation</p>
+        <header class="chat-topbar">
+            <div class="chat-topbar-title">
+                <p class="chat-context-label">Session</p>
                 <h1 id="conversation-title">{{ conversation.title }}</h1>
             </div>
-            <div class="conversation-balance">
-                <span>Wallet</span>
+            <div class="wallet-chip" aria-label="Available wallet balance">
+                <span>Balance</span>
                 <strong>{{ wallet.formatted_balance }}</strong>
             </div>
         </header>
 
-        {% for usage in usage_requests %}
-            {% if usage.status == "reconciliation_required" %}
-                <aside class="request-notice request-notice--warning">
-                    Usage for request {{ usage.pk }} needs reconciliation. {{ usage.formatted_reservation }} remains reserved; no automatic retry was made.
-                </aside>
-            {% elif usage.status == "pending" or usage.status == "reserved" %}
-                <aside class="request-notice">Request {{ usage.pk }} is {{ usage.get_status_display|lower }}.</aside>
-            {% elif usage.status == "failed_before_upstream" %}
-                <aside class="request-notice">A request failed before reaching the provider. No usage was charged.</aside>
-            {% endif %}
-        {% endfor %}
-
-        <div class="message-list" aria-label="Messages in this conversation" aria-live="polite">
-            {% for message in chat_messages %}
-                <article class="message-card message-card--{{ message.role }}">
-                    <header class="message-card-header">
-                        <strong>{{ message.get_role_display }}</strong>
-                        {% if message.role == "assistant" and message.provider %}
-                            <span class="provider-badge">{{ message.get_provider_display }}</span>
-                        {% endif %}
-                        <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:'M j, H:i' }}</time>
-                    </header>
-                    <div class="message-content">{{ message.content|linebreaksbr }}</div>
-                    {% if message.role == "assistant" and message.usage_request %}
-                        {% with usage=message.usage_request %}
-                            {% if usage.status == "succeeded" %}
-                                <footer class="usage-receipt">
-                                    <span>{{ usage.input_tokens }} input</span>
-                                    <span>{{ usage.output_tokens }} output</span>
-                                    <span>{{ usage.total_tokens }} total tokens</span>
-                                    <strong>−{{ usage.formatted_charge }}</strong>
-                                </footer>
-                            {% endif %}
-                        {% endwith %}
-                    {% endif %}
-                </article>
-            {% empty %}
-                <div class="empty-transcript">
-                    <p class="eyebrow">No messages yet</p>
-                    <p>Send the first message to begin this conversation.</p>
-                </div>
+        <div class="transcript-scroll" role="region" aria-label="Conversation transcript">
+            {% for usage in usage_requests %}
+                {% if usage.status == "reconciliation_required" %}
+                    <aside class="request-notice request-notice--warning">
+                        Usage for request {{ usage.pk }} needs reconciliation. {{ usage.formatted_reservation }} remains reserved; no automatic retry was made.
+                    </aside>
+                {% elif usage.status == "pending" or usage.status == "reserved" %}
+                    <aside class="request-notice">Request {{ usage.pk }} is {{ usage.get_status_display|lower }}.</aside>
+                {% elif usage.status == "failed_before_upstream" %}
+                    <aside class="request-notice">A request failed before reaching the provider. No usage was charged.</aside>
+                {% endif %}
             {% endfor %}
+
+            <div class="message-list" aria-label="Messages in this conversation" aria-live="polite" aria-relevant="additions text">
+                {% for message in chat_messages %}
+                    <article class="message-row message-row--{{ message.role }}">
+                        {% if message.role == "assistant" %}
+                            <div class="assistant-response">
+                                <header class="assistant-message-header">
+                                    <span class="assistant-avatar" aria-hidden="true">A</span>
+                                    <strong>AllChat</strong>
+                                    {% if message.provider %}
+                                        <span class="provider-badge">{{ message.get_provider_display }}</span>
+                                    {% endif %}
+                                    <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:'M j, H:i' }}</time>
+                                </header>
+                                <div class="message-content">{{ message.content|safe_markdown }}</div>
+                                {% if message.usage_request %}
+                                    {% with usage=message.usage_request %}
+                                        {% if usage.status == "succeeded" %}
+                                            <footer class="usage-receipt">
+                                                <span>{{ usage.input_tokens }} input</span>
+                                                <span>{{ usage.output_tokens }} output</span>
+                                                <span>{{ usage.total_tokens }} total tokens</span>
+                                                <strong>−{{ usage.formatted_charge }}</strong>
+                                            </footer>
+                                        {% endif %}
+                                    {% endwith %}
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="user-message-group">
+                                <div class="user-bubble">
+                                    <div class="message-content">{{ message.content|linebreaksbr }}</div>
+                                </div>
+                                <time datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:'M j, H:i' }}</time>
+                            </div>
+                        {% endif %}
+                    </article>
+                {% empty %}
+                    <div class="empty-transcript">
+                        <p class="eyebrow">No messages yet</p>
+                        <p>Send the first message to begin this conversation.</p>
+                    </div>
+                {% endfor %}
+            </div>
         </div>
-        {% include "chat/_message_form.html" %}
+        <footer class="chat-composer-dock">
+            {% include "chat/_message_form.html" %}
+        </footer>
     </section>
 </div>
 {% endblock %}

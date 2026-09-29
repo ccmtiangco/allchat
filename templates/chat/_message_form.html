@@ -2,20 +2,24 @@
     {% csrf_token %}
     {{ form.conversation_id }}
     {{ form.idempotency_key }}
-    {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
-    <div class="form-field message-field">
-        {{ form.content.label_tag }}
-        {{ form.content }}
-        {% if form.content.errors %}<div class="form-errors">{{ form.content.errors }}</div>{% endif %}
-    </div>
-    <div class="message-form-footer">
+    {% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="composer-toolbar">
         <div class="form-field provider-field">
             {{ form.provider.label_tag }}
             {{ form.provider }}
-            <small>These are provider-compatible API routes; the proxy may map them to a shared upstream model.</small>
             {% if form.provider.errors %}<div class="form-errors">{{ form.provider.errors }}</div>{% endif %}
         </div>
-        <button class="primary-button send-button" type="submit">Send message</button>
+        <p class="form-disclosure">$0.002 per 1,000 combined tokens <span aria-hidden="true">·</span> Up to {{ max_output_tokens }} output tokens</p>
     </div>
-    <p class="form-disclosure">Input and output tokens are charged at $0.002 per 1,000 combined tokens. Output is capped at {{ max_output_tokens }} tokens.</p>
+    <div class="composer-surface">
+        <div class="form-field message-field">
+            <div class="visually-hidden">{{ form.content.label_tag }}</div>
+            {{ form.content }}
+            {% if form.content.errors %}<div class="form-errors" role="alert">{{ form.content.errors }}</div>{% endif %}
+        </div>
+        <button class="send-button" type="submit" aria-label="Send message" title="Send message">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 4 16 8-16 8 2.5-8z"/><path d="M6.5 12H20"/></svg>
+        </button>
+    </div>
+    <small class="route-disclosure">These are provider-compatible routes; the proxy may use a shared upstream model.</small>
 </form>

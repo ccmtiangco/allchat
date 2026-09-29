@@ -1,22 +1,54 @@
-<aside class="conversation-sidebar" aria-label="Conversation history">
-    <div class="sidebar-heading">
-        <div>
-            <p class="eyebrow">Library</p>
-            <h2>Conversations</h2>
+<aside class="conversation-sidebar" aria-label="Workspace navigation">
+    <a class="sidebar-brand" href="{% url 'chat:home' %}">
+        <span class="sidebar-brand-mark" aria-hidden="true">A</span>
+        <span>AllChat</span>
+    </a>
+
+    <section class="sidebar-section" aria-labelledby="apps-heading">
+        <h2 class="sidebar-section-label" id="apps-heading">Apps</h2>
+        <a class="sidebar-app-link is-current" href="{% url 'chat:home' %}" aria-current="page">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H10l-4.5 4v-4.2A2.75 2.75 0 0 1 4 13.25z" />
+                <path d="M8 8.5h8M8 11.5h5" />
+            </svg>
+            <span>Chat</span>
+        </a>
+    </section>
+
+    <section class="sidebar-section account-section" aria-labelledby="account-heading">
+        <h2 class="sidebar-section-label" id="account-heading">Account</h2>
+        <div class="account-card">
+            <span class="account-avatar" aria-hidden="true">{{ user.username|first|upper }}</span>
+            <span class="account-details">
+                <strong>{{ user.username }}</strong>
+                <span>Signed in</span>
+            </span>
         </div>
-        <a class="new-conversation-link" href="{% url 'chat:home' %}" aria-label="Start a new conversation">+</a>
-    </div>
-    {% if conversations %}
-        <nav class="conversation-list" aria-label="Your conversations">
-            {% for item in conversations %}
-                <a class="conversation-link{% if current_conversation and current_conversation.pk == item.pk %} is-current{% endif %}"
-                   href="{% url 'chat:conversation' item.pk %}">
-                    <span class="conversation-link-title">{{ item.title }}</span>
-                    <time datetime="{{ item.updated_at|date:'c' }}">{{ item.updated_at|date:'M j, H:i' }}</time>
-                </a>
-            {% endfor %}
-        </nav>
-    {% else %}
-        <p class="sidebar-empty">Your conversation history will appear here.</p>
-    {% endif %}
+        <form method="post" action="{% url 'chat:logout' %}" class="sidebar-logout-form">
+            {% csrf_token %}
+            <button class="sidebar-logout" type="submit">Log out</button>
+        </form>
+    </section>
+
+    <section class="sidebar-section sessions-section" aria-labelledby="sessions-heading">
+        <div class="sidebar-section-heading">
+            <h2 class="sidebar-section-label" id="sessions-heading">Sessions</h2>
+            <a class="new-conversation-link" href="{% url 'chat:home' %}" aria-label="Start a new conversation" title="New conversation">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            </a>
+        </div>
+        {% if conversations %}
+            <nav class="conversation-list" aria-label="Conversation history">
+                {% for item in conversations %}
+                    <a class="conversation-link{% if current_conversation and current_conversation.pk == item.pk %} is-current{% endif %}"
+                       href="{% url 'chat:conversation' item.pk %}"{% if current_conversation and current_conversation.pk == item.pk %} aria-current="page"{% endif %}>
+                        <span class="conversation-link-title">{{ item.title }}</span>
+                        <time datetime="{{ item.updated_at|date:'c' }}">{{ item.updated_at|date:'M j, Y' }}</time>
+                    </a>
+                {% endfor %}
+            </nav>
+        {% else %}
+            <p class="sidebar-empty">Your conversations will appear here.</p>
+        {% endif %}
+    </section>
 </aside>

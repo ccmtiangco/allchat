@@ -441,7 +441,11 @@ class ChatOrchestrationTests(TestCase):
         self.assertContains(response, 'OpenAI-compatible')
         self.assertContains(response, 'Anthropic-compatible')
         self.assertContains(response, 'Google-compatible')
-        self.assertContains(response, 'Conversations')
+        self.assertContains(response, 'class="app-shell"')
+        self.assertContains(response, 'class="app-rail"')
+        self.assertContains(response, 'aria-label="Workspace navigation"')
+        self.assertContains(response, 'Sessions')
+        self.assertContains(response, 'class="composer-toolbar"')
 
     def test_conversation_page_renders_roles_usage_and_exact_debit(self):
         self.client.force_login(self.user)
@@ -461,14 +465,88 @@ class ChatOrchestrationTests(TestCase):
         )
 
         self.assertTemplateUsed(response, 'chat/conversation.html')
-        self.assertContains(response, 'message-card--user')
-        self.assertContains(response, 'message-card--assistant')
+        self.assertContains(response, 'message-row--user')
+        self.assertContains(response, 'message-row--assistant')
+        self.assertContains(response, 'class="transcript-scroll"')
+        self.assertContains(response, 'class="assistant-response"')
         self.assertContains(response, 'OpenAI-compatible')
         self.assertContains(response, '12 input')
         self.assertContains(response, '5 output')
         self.assertContains(response, '17 total tokens')
         self.assertContains(response, '$0.000034')
         self.assertContains(response, '$4.999966')
+
+    def test_assistant_message_html_is_sanitized(self):
+        self.client.force_login(self.user)
+        conversation = Conversation.objects.create(owner=self.user, title='Escaped answer')
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT,
+            provider=ProviderInterface.OPENAI,
+            content='<script>alert("unsafe")</script>',
+        )
+
+        response = self.client.get(
+            reverse('chat:conversation', kwargs={'conversation_id': conversation.pk})
+        )
+
+        self.assertNotContains(response, '<script>')
+        self.assertNotContains(response, '&lt;script&gt;')
+        self.assertContains(response, 'alert("unsafe")')
+
+    def test_user_message_markup_remains_escaped(self):
+        self.client.force_login(self.user)
+        conversation = Conversation.objects.create(owner=self.user, title='Plain user text')
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.USER,
+            content='<script>alert("unsafe")</script>',
+        )
+
+        response = self.client.get(
+            reverse('chat:conversation', kwargs={'conversation_id': conversation.pk})
+        )
+
+        self.assertContains(response, '&lt;script&gt;alert(&quot;unsafe&quot;)&lt;/script&gt;')
+        self.assertNotContains(response, '<script>alert("unsafe")</script>')
+
+    def test_assistant_markdown_renders_common_formatting_and_code_blocks(self):
+        self.client.force_login(self.user)
+        conversation = Conversation.objects.create(owner=self.user, title='Formatted answer')
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT,
+            provider=ProviderInterface.OPENAI,
+            content='## Answer\n\n**Bold** text.\n\n- First\n- Second\n\n```python\nprint("safe")\n```',
+        )
+
+        response = self.client.get(
+            reverse('chat:conversation', kwargs={'conversation_id': conversation.pk})
+        )
+
+        self.assertContains(response, '<h2>Answer</h2>')
+        self.assertContains(response, '<strong>Bold</strong>')
+        self.assertContains(response, '<ul>')
+        self.assertContains(response, 'class="language-python"')
+        self.assertContains(response, '<pre><code')
+
+    def test_assistant_markdown_strips_unsafe_html_and_links(self):
+        self.client.force_login(self.user)
+        conversation = Conversation.objects.create(owner=self.user, title='Unsafe markup')
+        Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT,
+            provider=ProviderInterface.OPENAI,
+            content='<img src=x onerror=alert(1)>\n\n[unsafe](javascript:alert(1))',
+        )
+
+        response = self.client.get(
+            reverse('chat:conversation', kwargs={'conversation_id': conversation.pk})
+        )
+
+        self.assertNotContains(response, '<img')
+        self.assertNotContains(response, 'onerror=')
+        self.assertNotContains(response, 'href="javascript:')
 
     def test_message_post_redirects_to_the_created_conversation(self):
         self.client.force_login(self.user)
