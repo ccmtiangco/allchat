@@ -54,6 +54,7 @@ class BillingModelAndServiceTests(TestCase):
         entry = wallet.ledger_entries.get()
 
         self.assertEqual(wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD)
+        self.assertEqual(wallet.formatted_balance, '$5.000000')
         self.assertEqual(entry.amount_micro_usd, INITIAL_BALANCE_MICRO_USD)
         self.assertEqual(entry.balance_delta_micro_usd, INITIAL_BALANCE_MICRO_USD)
         self.assertEqual(entry.entry_type, WalletLedgerEntry.EntryType.INITIAL_CREDIT)
@@ -177,6 +178,9 @@ class BillingModelAndServiceTests(TestCase):
         self.assertEqual(settled.upstream_request_id, 'proxy-request-1')
         self.assertEqual(settled.assistant_message_id, assistant_message.pk)
         self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD - 4_000)
+        wallet = self.user.wallet
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.formatted_balance, '$4.996000')
 
         entries = list(self.user.wallet.ledger_entries.all())
         self.assertEqual(
