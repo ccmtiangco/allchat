@@ -88,7 +88,18 @@ database row locks, while SQLite is intended for local development and tests.
 
 Use Python 3.10 or newer. SQLite is the default local database.
 
-1. Create and activate a virtual environment, then install dependencies:
+1. Clone the GitHub repository and enter its directory:
+
+   ```sh
+   git clone <repository-url>
+   cd litechat
+   ```
+
+   Replace `<repository-url>` with the repository's GitHub URL. If Git checks
+   out the project into a differently named directory, use that directory in
+   the `cd` command.
+
+2. Create and activate a virtual environment, then install dependencies:
 
    ```sh
    python -m venv .venv
@@ -96,7 +107,10 @@ Use Python 3.10 or newer. SQLite is the default local database.
    python -m pip install -r requirements.txt
    ```
 
-2. Create a local environment file and configure it:
+   On Windows PowerShell, activate the environment with
+   `.\.venv\Scripts\Activate.ps1` instead of the `source` command.
+
+3. Create a local environment file and configure it:
 
    ```sh
    cp .env.example .env
@@ -106,15 +120,22 @@ Use Python 3.10 or newer. SQLite is the default local database.
    `GOOGLE_PROXY_KEY` to the credentials supplied for your environment. Also
    replace `DJANGO_SECRET_KEY` with a private random value. Keep these values
    only in the local `.env` or a deployment secret manager. **Never commit
-   `.env`, proxy keys, or other secret values.** `.gitignore` excludes `.env`,
-   local SQLite databases, virtual environments, and Python cache files.
+   `.env`, proxy keys, or other secret values.** `.gitignore` excludes `.env`
+   and environment-specific `.env.*` files while allowing the safe
+   `.env.example`. It also excludes local session transcripts and conversation
+   exports, SQLite databases, virtual environments, and Python cache files.
+   Ignore rules help prevent accidental commits; they cannot remove files or
+   credentials already present in Git history. Revoke any credential that was
+   ever committed or shared.
 
    `.env.example` contains variable names and safe development placeholders.
    `PROXY_BASE_URL`, provider model IDs, connect/read timeouts, and the maximum
    output token count can also be configured there. Do not put secret values in
-   `.env.example` or any tracked file.
+   `.env.example` or any tracked file. A clone has no usable proxy credentials:
+   the three key fields in `.env.example` are blank. You must supply your own
+   credentials for live provider calls; the automated tests use mocked calls.
 
-3. Apply migrations and start the development server:
+4. Apply migrations and start the development server:
 
    ```sh
    python manage.py migrate
