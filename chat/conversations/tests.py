@@ -9,7 +9,12 @@ from .models import (
     Conversation,
     Message,
 )
-from .services import ContextLimitExceeded, build_conversation_context
+from .services import (
+    ContextLimitExceeded,
+    append_message,
+    build_conversation_context,
+    get_owned_conversation,
+)
 
 User = get_user_model()
 
@@ -110,7 +115,7 @@ class ConversationAndMessageTests(TestCase):
             content='new prompt',
         )
 
-        context = build_conversation_context(conversation, max_characters=10)
+        context = build_conversation_context(self.user, conversation.pk, max_characters=10)
 
         self.assertEqual(context, [{'role': 'user', 'content': 'new prompt'}])
 
@@ -118,7 +123,20 @@ class ConversationAndMessageTests(TestCase):
         conversation, _ = Conversation.create_from_first_message(self.user, 'A message that is too long')
 
         with self.assertRaises(ContextLimitExceeded):
-            build_conversation_context(conversation, max_characters=4)
+            build_conversation_context(self.user, conversation.pk, max_characters=4)
+
+    def test_reads_and_message_writes_are_scoped_to_the_owner(self):
+        conversation, _ = Conversation.create_from_first_message(self.user, 'Private history')
+        other_user = User.objects.create_user(username='intruder', password='password')
+
+        with self.assertRaises(Conversation.DoesNotExist):
+            get_owned_conversation(other_user, conversation.pk)
+        with self.assertRaises(Conversation.DoesNotExist):
+            build_conversation_context(other_user, conversation.pk)
+        with self.assertRaises(Conversation.DoesNotExist):
+            append_message(other_user, conversation.pk, Message.Role.USER, 'Injected message')
+
+        self.assertEqual(conversation.messages.count(), 1)
 
 
 class ConversationModelDefaultsTests(TestCase):

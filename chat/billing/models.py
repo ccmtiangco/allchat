@@ -55,7 +55,7 @@ class WalletLedgerEntry(models.Model):
         'chat.UsageRequest',
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name='ledger_entries',
     )
     metadata = models.JSONField(default=dict, blank=True)
@@ -66,6 +66,18 @@ class WalletLedgerEntry(models.Model):
             models.CheckConstraint(
                 condition=Q(amount_micro_usd__gt=0),
                 name='wallet_ledger_amount_positive',
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    entry_type__in=(
+                        'initial_credit',
+                        'reservation',
+                        'usage_debit',
+                        'release',
+                        'refund',
+                    )
+                ),
+                name='wallet_ledger_entry_type_supported',
             ),
             models.UniqueConstraint(
                 fields=('wallet',),
@@ -139,6 +151,9 @@ class UsageRequest(models.Model):
     input_tokens = models.PositiveBigIntegerField(null=True, blank=True)
     output_tokens = models.PositiveBigIntegerField(null=True, blank=True)
     total_tokens = models.PositiveBigIntegerField(null=True, blank=True)
+    reserved_input_tokens = models.PositiveBigIntegerField(null=True, blank=True)
+    reserved_output_tokens = models.PositiveBigIntegerField(null=True, blank=True)
+    reserved_total_tokens = models.PositiveBigIntegerField(null=True, blank=True)
     reserved_micro_usd = models.PositiveBigIntegerField(default=0)
     charge_micro_usd = models.PositiveBigIntegerField(default=0)
     pricing_version = models.CharField(max_length=64, default=PRICING_VERSION)
@@ -163,6 +178,25 @@ class UsageRequest(models.Model):
                 condition=Q(provider__in=ProviderInterface.values),
                 name='usage_provider_is_supported',
             ),
+            models.CheckConstraint(
+                condition=Q(
+                    status__in=(
+                        'pending',
+                        'reserved',
+                        'succeeded',
+                        'failed_before_upstream',
+                        'reconciliation_required',
+                    )
+                ),
+                name='usage_status_supported',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(reconciliation_reason__isnull=True)
+                    | Q(reconciliation_reason__in=('usage_unknown', 'reservation_exceeded'))
+                ),
+                name='usage_reconciliation_reason_supported',
+            ),
             models.UniqueConstraint(
                 fields=('user', 'idempotency_key'),
                 name='unique_usage_idempotency_per_user',
@@ -181,6 +215,33 @@ class UsageRequest(models.Model):
                     )
                 ),
                 name='usage_token_counts_consistent',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        reserved_input_tokens__isnull=True,
+                        reserved_output_tokens__isnull=True,
+                        reserved_total_tokens__isnull=True,
+                    )
+                    | Q(
+                        reserved_input_tokens__isnull=False,
+                        reserved_output_tokens__isnull=False,
+                        reserved_total_tokens=F('reserved_input_tokens')
+                        + F('reserved_output_tokens'),
+                    )
+                ),
+                name='reserved_token_caps_consistent',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(status__in=('reserved', 'succeeded', 'reconciliation_required'))
+                    | Q(
+                        reserved_input_tokens__isnull=False,
+                        reserved_output_tokens__isnull=False,
+                        reserved_total_tokens__isnull=False,
+                    )
+                ),
+                name='reserved_usage_has_token_caps',
             ),
             models.CheckConstraint(
                 condition=(
@@ -208,6 +269,10 @@ class UsageRequest(models.Model):
             ),
         ]
         ordering = ('-created_at', '-id')
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def clean(self):
         errors = {}

@@ -5,6 +5,7 @@ from unittest import skipUnless
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import close_old_connections, connection
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase, TransactionTestCase
 
 from ..choices import ProviderInterface
@@ -19,6 +20,7 @@ from .services import (
     BillingError,
     IdempotencyConflict,
     InsufficientBalance,
+    InvalidRequestState,
     calculate_charge_micro_usd,
     create_usage_request,
     fail_before_upstream,
@@ -66,6 +68,19 @@ class BillingModelAndServiceTests(TestCase):
         with self.assertRaises(TypeError):
             WalletLedgerEntry.objects.filter(pk=entry.pk).delete()
 
+    def test_usage_records_with_ledger_entries_cannot_be_deleted(self):
+        request = self.make_request()
+        reserve_usage(request, maximum_input_tokens=10, maximum_output_tokens=0)
+        reservation = request.ledger_entries.get(
+            entry_type=WalletLedgerEntry.EntryType.RESERVATION
+        )
+
+        with self.assertRaises(ProtectedError):
+            request.delete()
+
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.related_request_id, request.pk)
+
     def test_flat_rate_uses_combined_tokens_and_exact_micro_dollars(self):
         self.assertEqual(calculate_charge_micro_usd(1, 0), 2)
         self.assertEqual(calculate_charge_micro_usd(1_000, 0), 2_000)
@@ -96,6 +111,9 @@ class BillingModelAndServiceTests(TestCase):
         self.assertEqual(first.status, UsageRequest.Status.PENDING)
         self.assertIsNone(first.input_tokens)
         self.assertEqual(first.pricing_version, PRICING_VERSION)
+        reserve_usage(first, maximum_input_tokens=10, maximum_output_tokens=0)
+        with self.assertRaises(InvalidRequestState):
+            reserve_usage(repeated, maximum_input_tokens=10, maximum_output_tokens=0)
         with self.assertRaises(IdempotencyConflict):
             create_usage_request(
                 self.user,
@@ -115,22 +133,25 @@ class BillingModelAndServiceTests(TestCase):
                 'foreign-conversation',
             )
 
-    def test_usage_record_model_rejects_a_conversation_owned_by_another_user(self):
+    def test_usage_record_save_rejects_a_conversation_owned_by_another_user(self):
         other_user = User.objects.create_user(username='foreign-owner', password='password')
         other_conversation, _ = Conversation.create_from_first_message(other_user, 'Private')
-        usage = UsageRequest(
-            user=self.user,
-            conversation=other_conversation,
-            provider=ProviderInterface.OPENAI,
-            idempotency_key='mismatched-owner',
-        )
 
         with self.assertRaises(ValidationError):
-            usage.full_clean()
+            UsageRequest.objects.create(
+                user=self.user,
+                conversation=other_conversation,
+                provider=ProviderInterface.OPENAI,
+                idempotency_key='mismatched-owner',
+            )
 
     def test_reservation_and_settlement_release_unused_amount(self):
         request = self.make_request()
-        reserved = reserve_usage(request, 5_000)
+        reserved = reserve_usage(
+            request,
+            maximum_input_tokens=1_000,
+            maximum_output_tokens=1_500,
+        )
         self.assertEqual(reserved.status, UsageRequest.Status.RESERVED)
         self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD - 5_000)
 
@@ -171,7 +192,7 @@ class BillingModelAndServiceTests(TestCase):
 
     def test_zero_usage_settles_and_releases_the_entire_reservation(self):
         request = self.make_request()
-        reserve_usage(request, 100)
+        reserve_usage(request, maximum_input_tokens=50, maximum_output_tokens=0)
 
         settled = settle_usage(request, 0, 0)
 
@@ -189,7 +210,11 @@ class BillingModelAndServiceTests(TestCase):
         request = self.make_request()
 
         with self.assertRaises(InsufficientBalance):
-            reserve_usage(request, INITIAL_BALANCE_MICRO_USD + 1)
+            reserve_usage(
+                request,
+                maximum_input_tokens=(INITIAL_BALANCE_MICRO_USD // 2) + 1,
+                maximum_output_tokens=0,
+            )
 
         request.refresh_from_db()
         self.user.wallet.refresh_from_db()
@@ -198,7 +223,7 @@ class BillingModelAndServiceTests(TestCase):
 
     def test_usage_unknown_keeps_the_reservation_for_reconciliation(self):
         request = self.make_request()
-        reserve_usage(request, 1_000)
+        reserve_usage(request, maximum_input_tokens=500, maximum_output_tokens=0)
 
         unknown = mark_usage_unknown(request, upstream_request_id='ambiguous-upstream-id')
 
@@ -214,7 +239,7 @@ class BillingModelAndServiceTests(TestCase):
 
     def test_charge_larger_than_reservation_requires_reconciliation(self):
         request = self.make_request()
-        reserve_usage(request, 100)
+        reserve_usage(request, maximum_input_tokens=25, maximum_output_tokens=25)
 
         result = settle_usage(request, 25, 26)
 
@@ -228,7 +253,7 @@ class BillingModelAndServiceTests(TestCase):
 
     def test_failure_before_upstream_releases_a_reservation(self):
         request = self.make_request()
-        reserve_usage(request, 500)
+        reserve_usage(request, maximum_input_tokens=250, maximum_output_tokens=0)
 
         failed = fail_before_upstream(request)
 
@@ -243,10 +268,9 @@ class BillingModelAndServiceTests(TestCase):
             ],
         )
 
-    def test_repeated_reserve_and_settlement_do_not_duplicate_ledger_entries(self):
+    def test_repeated_settlement_does_not_duplicate_ledger_entries(self):
         request = self.make_request()
-        reserve_usage(request, 100)
-        reserve_usage(request, 100)
+        reserve_usage(request, maximum_input_tokens=15, maximum_output_tokens=35)
         settled = settle_usage(request, 10, 10)
         settle_usage(request, 10, 10)
 
@@ -255,7 +279,7 @@ class BillingModelAndServiceTests(TestCase):
 
     def test_refunds_are_recorded_and_cannot_exceed_settled_charge(self):
         request = self.make_request()
-        reserve_usage(request, 2_500)
+        reserve_usage(request, maximum_input_tokens=500, maximum_output_tokens=750)
         settle_usage(request, 500, 500)
         first_refund = refund_usage(
             request,
@@ -314,7 +338,11 @@ class WalletReservationConcurrencyTests(TransactionTestCase):
             close_old_connections()
             try:
                 barrier.wait(timeout=10)
-                reserve_usage(UsageRequest(pk=request_id), 75)
+                reserve_usage(
+                    UsageRequest(pk=request_id),
+                    maximum_input_tokens=37,
+                    maximum_output_tokens=0,
+                )
                 return 'reserved'
             except InsufficientBalance:
                 return 'insufficient'
@@ -326,7 +354,7 @@ class WalletReservationConcurrencyTests(TransactionTestCase):
 
         self.assertCountEqual(results, ['reserved', 'insufficient'])
         wallet.refresh_from_db()
-        self.assertEqual(wallet.balance_micro_usd, 25)
+        self.assertEqual(wallet.balance_micro_usd, 26)
         self.assertEqual(
             wallet.ledger_entries.filter(
                 entry_type=WalletLedgerEntry.EntryType.RESERVATION
