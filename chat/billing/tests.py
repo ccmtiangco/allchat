@@ -361,3 +361,45 @@ class WalletReservationConcurrencyTests(TransactionTestCase):
             ).count(),
             2,
         )
+
+    def test_concurrent_settlement_charges_the_request_only_once(self):
+        user = User.objects.create_user(username='concurrent-settlement-user', password='password')
+        conversation, _ = Conversation.create_from_first_message(user, 'Concurrent settlement')
+        request, _ = create_usage_request(
+            user,
+            conversation,
+            ProviderInterface.OPENAI,
+            'parallel-settlement',
+        )
+        reserve_usage(request, maximum_input_tokens=100, maximum_output_tokens=100)
+        barrier = Barrier(2)
+
+        def settle(request_id):
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                return settle_usage(UsageRequest(pk=request_id), 50, 50).status
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            statuses = list(executor.map(settle, [request.pk, request.pk]))
+
+        self.assertEqual(statuses, [UsageRequest.Status.SUCCEEDED] * 2)
+        user.wallet.refresh_from_db()
+        self.assertEqual(
+            user.wallet.balance_micro_usd,
+            INITIAL_BALANCE_MICRO_USD - 200,
+        )
+        self.assertEqual(
+            user.wallet.ledger_entries.filter(
+                entry_type=WalletLedgerEntry.EntryType.USAGE_DEBIT
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            user.wallet.ledger_entries.filter(
+                entry_type=WalletLedgerEntry.EntryType.RELEASE
+            ).count(),
+            1,
+        )

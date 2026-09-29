@@ -127,6 +127,20 @@ def reserve_usage(request, *, maximum_input_tokens, maximum_output_tokens):
         return locked_request
 
 
+def _release_reservation(wallet, request, amount_micro_usd):
+    if not amount_micro_usd:
+        return
+    wallet.balance_micro_usd += amount_micro_usd
+    wallet.save(update_fields=('balance_micro_usd',))
+    WalletLedgerEntry.objects.create(
+        wallet=wallet,
+        entry_type=WalletLedgerEntry.EntryType.RELEASE,
+        amount_micro_usd=amount_micro_usd,
+        idempotency_key=f'usage-{request.pk}-release',
+        related_request=request,
+    )
+
+
 def settle_usage(
     request,
     input_tokens,
@@ -181,16 +195,7 @@ def settle_usage(
             )
 
         release_amount = locked_request.reserved_micro_usd - charge
-        if release_amount:
-            wallet.balance_micro_usd += release_amount
-            wallet.save(update_fields=('balance_micro_usd',))
-            WalletLedgerEntry.objects.create(
-                wallet=wallet,
-                entry_type=WalletLedgerEntry.EntryType.RELEASE,
-                amount_micro_usd=release_amount,
-                idempotency_key=f'usage-{locked_request.pk}-release',
-                related_request=locked_request,
-            )
+        _release_reservation(wallet, locked_request, release_amount)
 
         locked_request.status = UsageRequest.Status.SUCCEEDED
         locked_request.reconciliation_reason = None
@@ -211,15 +216,7 @@ def fail_before_upstream(request):
 
         if locked_request.status == UsageRequest.Status.RESERVED:
             wallet = Wallet.objects.select_for_update().get(user_id=locked_request.user_id)
-            wallet.balance_micro_usd += locked_request.reserved_micro_usd
-            wallet.save(update_fields=('balance_micro_usd',))
-            WalletLedgerEntry.objects.create(
-                wallet=wallet,
-                entry_type=WalletLedgerEntry.EntryType.RELEASE,
-                amount_micro_usd=locked_request.reserved_micro_usd,
-                idempotency_key=f'usage-{locked_request.pk}-release',
-                related_request=locked_request,
-            )
+            _release_reservation(wallet, locked_request, locked_request.reserved_micro_usd)
 
         locked_request.status = UsageRequest.Status.FAILED_BEFORE_UPSTREAM
         locked_request.completed_at = timezone.now()
