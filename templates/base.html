@@ -7,27 +7,43 @@
     <title>{% block title %}AllChat{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
 </head>
-<body>
-    <header class="site-header">
-        <a class="brand" href="{% url 'chat:home' %}">AllChat</a>
-        <nav aria-label="Account">
-            {% if user.is_authenticated %}
-                <a href="{% url 'chat:home' %}">Chats</a>
-                <span class="account-name">{{ user.username }}</span>
-                <span class="header-balance" aria-label="Wallet balance">{{ user.wallet.formatted_balance }}</span>
-                <form method="post" action="{% url 'chat:logout' %}">
-                    {% csrf_token %}
-                    <button class="link-button" type="submit">Log out</button>
-                </form>
-            {% else %}
+<body class="{% if user.is_authenticated %}authenticated-body{% else %}public-body{% endif %}">
+    {% if user.is_authenticated %}
+        <div class="app-shell">
+            <aside class="app-rail" aria-label="Global navigation">
+                <a class="rail-logo" href="{% url 'chat:home' %}" aria-label="AllChat home">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 5.75A2.75 2.75 0 0 1 6.75 3h10.5A2.75 2.75 0 0 1 20 5.75v7.5A2.75 2.75 0 0 1 17.25 16H10l-4.5 4v-4.2A2.75 2.75 0 0 1 4 13.25z" />
+                        <path d="M8 8.5h8M8 11.5h5" />
+                    </svg>
+                </a>
+                <nav class="rail-navigation" aria-label="Primary navigation">
+                    <a class="rail-action is-current" href="{% url 'chat:home' %}" aria-label="Chat" aria-current="page" title="Chat">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 5.75A2.75 2.75 0 0 1 7.75 3h8.5A2.75 2.75 0 0 1 19 5.75v7.5A2.75 2.75 0 0 1 16.25 16H10l-5 4v-6.1z" />
+                            <path d="M8 8h8M8 11h5" />
+                        </svg>
+                    </a>
+                </nav>
+                <a class="rail-action rail-new-chat" href="{% url 'chat:home' %}" aria-label="Start a new conversation" title="New conversation">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 5v14M5 12h14" />
+                    </svg>
+                </a>
+            </aside>
+            <main class="app-main">
+    {% else %}
+        <header class="site-header">
+            <a class="brand" href="{% url 'chat:home' %}">AllChat</a>
+            <nav aria-label="Account">
                 <a href="{% url 'chat:login' %}">Log in</a>
                 <a href="{% url 'chat:signup' %}">Create account</a>
-            {% endif %}
-        </nav>
-    </header>
-    <main class="page-shell">
+            </nav>
+        </header>
+        <main class="page-shell">
+    {% endif %}
         {% if messages %}
-            <div class="flash-stack" role="status" aria-live="polite">
+            <div class="flash-stack{% if user.is_authenticated %} flash-stack--floating{% endif %}" role="status" aria-live="polite">
                 {% for message in messages %}
                     <p class="flash flash--{{ message.tags }}">{{ message }}</p>
                 {% endfor %}
@@ -35,5 +51,6 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+    {% if user.is_authenticated %}</div>{% endif %}
 </body>
 </html>

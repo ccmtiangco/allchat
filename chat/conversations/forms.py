@@ -10,8 +10,8 @@ class MessageSubmissionForm(forms.Form):
         max_length=MAX_CONTEXT_CHARACTERS,
         widget=forms.Textarea(
             attrs={
-                'rows': 4,
-                'placeholder': 'Write a message...',
+                'rows': 2,
+                'placeholder': 'Type a message...',
                 'autocomplete': 'off',
             }
         ),

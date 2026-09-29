@@ -17,7 +17,7 @@ application:
 | `chat/conversations/` | Conversation/message persistence, owner-scoped access, bounded context construction, and turn orchestration |
 | `chat/billing/` | Wallet, append-only ledger, usage records, reservation/settlement, refunds, and administrative adjustments |
 | `chat/proxy/` | Server-side OpenAI-, Anthropic-, and Google-compatible HTTP adapters with normalized results |
-| `chat/views.py`, `templates/`, `chat/static/` | Authenticated views and responsive HTML/CSS chat UI; no browser-side provider calls or JavaScript are used |
+| `chat/views.py`, `templates/`, `chat/static/` | Authenticated views and responsive chat UI with an app rail, session sidebar, transcript, and docked composer; no browser-side provider calls or JavaScript are used |
 
 Each conversation belongs to one user and contains ordered user and assistant
 messages. Provider selection is recorded per assistant turn. A usage request
@@ -31,6 +31,9 @@ calls the proxy outside the database transaction, then persists the response
 and settlement. Successful submissions use post/redirect/get to avoid a second
 provider request on refresh. Proxy credentials and model identifiers are read
 from server configuration; they are never selected by arbitrary browser input.
+The assistant transcript supports common Markdown formatting and fenced code;
+rendered HTML is sanitized through an allow-list. User messages remain escaped
+plain text.
 
 The three choices represent API-compatible routes, not a guarantee of three
 different underlying vendor models. The proxy documentation recorded during
@@ -177,3 +180,5 @@ environment with secrets injected outside source control.
   authentication, payload, and usage response format.
 - Chat is synchronous and non-streaming. No API key is sent to or exposed in
   the browser. Configure production static-file serving for `chat/static/`.
+- Assistant Markdown uses a server-side renderer and HTML sanitizer; raw HTML
+  and unsafe link protocols are not passed through to the browser.

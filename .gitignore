@@ -19,6 +19,7 @@ media/
 **/*-conversation-export.*
 **/session-transcripts/
 **/transcripts/
+/doc/plan/Screenshot 2026-09-29 221335.png
 
 # Python Cache
 __pycache__/
