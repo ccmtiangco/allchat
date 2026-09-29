@@ -1,13 +1,14 @@
 # AllChat
 
-AllChat is a server-rendered Django chat application. Authenticated users can
-start conversations, select one of three provider-compatible proxy interfaces,
-and use a wallet with auditable, token-metered charges.
+AllChat is a Django chat application with server-rendered pages and a small
+browser client for in-place response streaming. Authenticated users can start
+conversations, select one of three provider-compatible proxy interfaces, and
+use a wallet with auditable, token-metered charges.
 
 ## Architecture
 
-The project is split by responsibility while remaining one synchronous Django
-application:
+The project is split by responsibility within one Django application. Django
+uses synchronous views and HTTP adapters, including a streaming response view:
 
 | Area | Responsibility |
 | --- | --- |
@@ -17,7 +18,7 @@ application:
 | `chat/conversations/` | Conversation/message persistence, owner-scoped access, bounded context construction, and turn orchestration |
 | `chat/billing/` | Wallet, append-only ledger, usage records, reservation/settlement, refunds, and administrative adjustments |
 | `chat/proxy/` | Server-side OpenAI-, Anthropic-, and Google-compatible HTTP adapters with normalized results |
-| `chat/views.py`, `templates/`, `chat/static/` | Authenticated views and responsive chat UI with an app rail, session sidebar, transcript, and docked composer; no browser-side provider calls or JavaScript are used |
+| `chat/views.py`, `templates/`, `chat/static/` | Authenticated views and responsive chat UI with an app rail, session sidebar, transcript, and docked composer; the browser client reads same-origin SSE and never calls a provider directly |
 
 Each conversation belongs to one user and contains ordered user and assistant
 messages. Provider selection is recorded per assistant turn. A usage request
@@ -25,15 +26,18 @@ links the user, conversation, submitted message, resulting assistant message
 when available, and billing state. Ownership checks are applied by the server
 when conversations are read or changed.
 
-The browser submits an ordinary CSRF-protected form. The server validates the
-allow-listed route, records a durable idempotent request, reserves wallet funds,
-calls the proxy outside the database transaction, then persists the response
-and settlement. Successful submissions use post/redirect/get to avoid a second
-provider request on refresh. Proxy credentials and model identifiers are read
-from server configuration; they are never selected by arbitrary browser input.
-The assistant transcript supports common Markdown formatting and fenced code;
-rendered HTML is sanitized through an allow-list. User messages remain escaped
-plain text.
+The browser submits a CSRF-protected form to the Django application. With
+JavaScript enabled, the client uses same-origin `fetch` to read server-sent
+events and update the transcript in place. The server validates the allow-listed
+route, records a durable idempotent request, reserves wallet funds, calls the
+proxy outside the database transaction, and settles only after receiving valid
+final usage. The ordinary form POST and redirect remain available as a
+no-JavaScript fallback. Proxy credentials and model identifiers are read from
+server configuration; they are never selected by arbitrary browser input. The
+assistant transcript supports common Markdown formatting and fenced code;
+rendered HTML is sanitized through an allow-list. Streamed assistant text is
+inserted as text until the server returns sanitized final Markdown. User
+messages remain escaped plain text.
 
 The three choices represent API-compatible routes, not a guarantee of three
 different underlying vendor models. The proxy documentation recorded during
@@ -94,13 +98,12 @@ Use Python 3.10 or newer. SQLite is the default local database.
 1. Clone the GitHub repository and enter its directory:
 
    ```sh
-   git clone <repository-url>
-   cd litechat
+   git clone https://github.com/ccmtiangco/allchat.git
+   cd allchat
    ```
 
-   Replace `<repository-url>` with the repository's GitHub URL. If Git checks
-   out the project into a differently named directory, use that directory in
-   the `cd` command.
+   If Git checks out the project into a differently named directory, use that
+   directory in the `cd` command.
 
 2. Create and activate a virtual environment, then install dependencies:
 
@@ -119,14 +122,16 @@ Use Python 3.10 or newer. SQLite is the default local database.
    cp .env.example .env
    ```
 
-   Edit `.env` and set `OPENAI_PROXY_KEY`, `ANTHROPIC_PROXY_KEY`, and
-   `GOOGLE_PROXY_KEY` to the credentials supplied for your environment. Also
-   replace `DJANGO_SECRET_KEY` with a private random value. Keep these values
-   only in the local `.env` or a deployment secret manager. **Never commit
-   `.env`, proxy keys, or other secret values.** `.gitignore` excludes `.env`
-   and environment-specific `.env.*` files while allowing the safe
-   `.env.example`. It also excludes local session transcripts and conversation
-   exports, SQLite databases, virtual environments, and Python cache files.
+   Edit `.env`, replace `DJANGO_SECRET_KEY` with a private random value, and
+   provide the proxy keys for the interfaces you intend to call:
+   `OPENAI_PROXY_KEY`, `ANTHROPIC_PROXY_KEY`, and `GOOGLE_PROXY_KEY`. A local
+   development server can start without proxy keys, but a live request needs the
+   key for its selected interface. Keep credentials only in the local `.env` or
+   a deployment secret manager. **Never commit `.env`, proxy keys, or other
+   secret values.** `.gitignore` excludes `.env` and environment-specific
+   `.env.*` files while allowing the safe `.env.example`. It also excludes
+   local session transcripts and conversation exports, SQLite databases,
+   virtual environments, and Python cache files.
    Ignore rules help prevent accidental commits; they cannot remove files or
    credentials already present in Git history. Revoke any credential that was
    ever committed or shared.
@@ -149,6 +154,9 @@ Use Python 3.10 or newer. SQLite is the default local database.
    initial wallet automatically. To administer wallets and reconcile requests,
    create a staff account with `python manage.py createsuperuser` and visit
    `/admin/`.
+
+   The chat page streams responses in place when JavaScript is available. The
+   standard form submission remains the fallback when it is not.
 
 Useful verification commands:
 
@@ -174,11 +182,14 @@ environment with secrets injected outside source control.
 - The proxy base URL must use HTTPS. The router has bounded connect/read
   timeouts, does not follow redirects, limits response size, and avoids
   automatic retries for ambiguous outcomes.
-- The route adapters call `/openai/v1/chat/completions`,
-  `/anthropic/v1/messages`, and
-  `/google/v1beta/models/{model}:generateContent`, with each protocol's
-  authentication, payload, and usage response format.
-- Chat is synchronous and non-streaming. No API key is sent to or exposed in
-  the browser. Configure production static-file serving for `chat/static/`.
+- The route adapters use `/openai/v1/chat/completions`,
+  `/anthropic/v1/messages`, and `/google/v1beta/models/{model}:generateContent`
+  for ordinary requests. Streaming uses the provider-specific streaming
+  protocols, including Google's `:streamGenerateContent?alt=sse` endpoint.
+- The authenticated stream endpoint uses `StreamingHttpResponse` and disables
+  common proxy buffering where supported. Configure the application server and
+  reverse proxy to pass through streamed responses. The ordinary form endpoint
+  remains the no-JavaScript fallback. No API key is sent to or exposed in the
+  browser. Configure production static-file serving for `chat/static/`.
 - Assistant Markdown uses a server-side renderer and HTML sanitizer; raw HTML
   and unsafe link protocols are not passed through to the browser.
