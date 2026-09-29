@@ -56,7 +56,7 @@ def provision_initial_wallet(user, *, using=None):
 
 
 def create_usage_request(user, conversation, provider, idempotency_key):
-    if conversation.owner_id != user.pk:
+    if not conversation.is_owned_by(user):
         raise PermissionError('The conversation does not belong to the usage owner.')
     if provider not in ProviderInterface.values:
         raise ValueError('Unsupported provider interface.')

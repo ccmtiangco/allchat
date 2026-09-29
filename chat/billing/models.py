@@ -277,7 +277,7 @@ class UsageRequest(models.Model):
     def clean(self):
         errors = {}
         if self.user_id and self.conversation_id:
-            if self.conversation.owner_id != self.user_id:
+            if not self.conversation.is_owned_by(self.user):
                 errors['conversation'] = 'The conversation must belong to the usage owner.'
         if self.assistant_message_id:
             if self.assistant_message.conversation_id != self.conversation_id:

@@ -13,7 +13,11 @@ from .services import (
     ContextLimitExceeded,
     append_message,
     build_conversation_context,
+    delete_conversation,
+    delete_latest_user_message,
+    edit_latest_user_message,
     get_owned_conversation,
+    rename_conversation,
 )
 
 User = get_user_model()
@@ -137,6 +141,40 @@ class ConversationAndMessageTests(TestCase):
             append_message(other_user, conversation.pk, Message.Role.USER, 'Injected message')
 
         self.assertEqual(conversation.messages.count(), 1)
+
+    def test_conversation_edit_and_delete_are_owner_scoped(self):
+        conversation, _ = Conversation.create_from_first_message(self.user, 'Private history')
+        other_user = User.objects.create_user(username='conversation-intruder', password='password')
+
+        with self.assertRaises(Conversation.DoesNotExist):
+            rename_conversation(other_user, conversation.pk, 'Stolen title')
+        with self.assertRaises(Conversation.DoesNotExist):
+            delete_conversation(other_user, conversation.pk)
+
+        self.assertEqual(Conversation.objects.get(pk=conversation.pk).title, 'Private history')
+        rename_conversation(self.user, conversation.pk, 'Updated title')
+        delete_conversation(self.user, conversation.pk)
+        self.assertFalse(Conversation.objects.filter(pk=conversation.pk).exists())
+
+    def test_message_edit_and_delete_are_owner_scoped(self):
+        conversation, message = Conversation.create_from_first_message(self.user, 'Original prompt')
+        other_user = User.objects.create_user(username='message-intruder', password='password')
+
+        with self.assertRaises(Conversation.DoesNotExist):
+            edit_latest_user_message(other_user, conversation.pk, message.pk, 'Changed prompt')
+        with self.assertRaises(Conversation.DoesNotExist):
+            delete_latest_user_message(other_user, conversation.pk, message.pk)
+
+        message.refresh_from_db()
+        self.assertEqual(message.content, 'Original prompt')
+        edited = edit_latest_user_message(self.user, conversation.pk, message.pk, 'Edited prompt')
+        self.assertEqual(edited.content, 'Edited prompt')
+        delete_latest_user_message(self.user, conversation.pk, message.pk)
+        self.assertFalse(conversation.messages.exists())
+        self.assertEqual(
+            Conversation.objects.get(pk=conversation.pk).title,
+            DEFAULT_CONVERSATION_TITLE,
+        )
 
 
 class ConversationModelDefaultsTests(TestCase):

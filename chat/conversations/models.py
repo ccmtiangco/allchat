@@ -24,6 +24,9 @@ class Conversation(models.Model):
         ordering = ('-updated_at', '-id')
         indexes = [models.Index(fields=('owner', '-updated_at'), name='conversation_owner_updated')]
 
+    def is_owned_by(self, user):
+        return self.owner_id == user.pk
+
     @classmethod
     def create_from_first_message(cls, owner, content):
         if not content.strip():
