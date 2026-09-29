@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Create account | AllChat{% endblock %}
+
+{% block content %}
+<section class="auth-card" aria-labelledby="signup-title">
+    <p class="eyebrow">A fresh start</p>
+    <h1 id="signup-title">Create your account</h1>
+    <p class="intro">Your account starts with $5.00 in chat credit.</p>
+    <form method="post" class="form-stack">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+            <div class="form-field">
+                {{ field.label_tag }}
+                {{ field }}
+                {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+                {{ field.errors }}
+            </div>
+        {% endfor %}
+        <button class="primary-button" type="submit">Create account</button>
+    </form>
+    <p class="form-footnote">Already registered? <a href="{% url 'chat:login' %}">Log in</a></p>
+</section>
+{% endblock %}

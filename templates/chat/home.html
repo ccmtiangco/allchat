@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}AllChat | New conversation{% endblock %}
+
+{% block content %}
+<div class="chat-workspace">
+    {% include "chat/_conversation_sidebar.html" with current_conversation=None %}
+    <section class="chat-panel" aria-labelledby="new-chat-title">
+        <header class="chat-panel-header">
+            <p class="eyebrow">A la carte AI</p>
+            <h1 id="new-chat-title">Start a conversation</h1>
+            <p class="intro">Choose a compatible route for this message. Your selection can change on every turn.</p>
+        </header>
+        <section class="balance-card" aria-label="Available balance">
+            <div>
+                <p class="eyebrow">Available wallet balance</p>
+                <p class="balance-amount">{{ wallet.formatted_balance }}</p>
+            </div>
+            <p class="balance-note">Balance and charges are displayed to six decimal places.</p>
+        </section>
+        {% include "chat/_message_form.html" %}
+    </section>
+</div>
+{% endblock %}

@@ -116,6 +116,20 @@ ANTHROPIC_PROXY_MODEL = os.getenv('ANTHROPIC_PROXY_MODEL', 'claude-haiku-4-5-202
 GOOGLE_PROXY_MODEL = os.getenv('GOOGLE_PROXY_MODEL', 'gemini-3.8-flash')
 PROXY_CONNECT_TIMEOUT = int(os.getenv('PROXY_CONNECT_TIMEOUT', '5'))
 PROXY_READ_TIMEOUT = int(os.getenv('PROXY_READ_TIMEOUT', '60'))
+MAX_CHAT_OUTPUT_TOKENS = int(os.getenv('MAX_CHAT_OUTPUT_TOKENS', '2048'))
+if MAX_CHAT_OUTPUT_TOKENS <= 0:
+    raise ImproperlyConfigured('MAX_CHAT_OUTPUT_TOKENS must be a positive integer.')
+
+if not DEBUG:
+    missing_proxy_keys = [
+        key_name
+        for key_name in ('OPENAI_PROXY_KEY', 'ANTHROPIC_PROXY_KEY', 'GOOGLE_PROXY_KEY')
+        if not os.getenv(key_name)
+    ]
+    if missing_proxy_keys:
+        raise ImproperlyConfigured(
+            f"Missing required provider configuration: {', '.join(missing_proxy_keys)}."
+        )
 
 
 # Password validation
@@ -159,3 +173,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+AUTH_USER_MODEL = 'chat.User'
+LOGIN_URL = 'chat:login'
+LOGIN_REDIRECT_URL = 'chat:home'
+LOGOUT_REDIRECT_URL = 'chat:login'

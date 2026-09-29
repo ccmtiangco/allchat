@@ -1,0 +1,597 @@
+:root {
+    color-scheme: light;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #172421;
+    background: #f3f6f2;
+    font-synthesis: none;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+}
+
+a {
+    color: #176650;
+    text-underline-offset: 0.2em;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+    outline: 3px solid #e1a83b;
+    outline-offset: 3px;
+}
+
+.site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4.5rem;
+    padding: 0 6vw;
+    border-bottom: 1px solid #dce5dd;
+    background: #fbfcfa;
+}
+
+.brand {
+    color: #172421;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    text-decoration: none;
+}
+
+.site-header nav {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    font-size: 0.92rem;
+}
+
+.site-header nav form {
+    margin: 0;
+}
+
+.account-name {
+    color: #58665f;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #176650;
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    cursor: pointer;
+}
+
+.page-shell {
+    width: min(100% - 2rem, 68rem);
+    margin: 0 auto;
+    padding: clamp(2.5rem, 8vw, 6rem) 0;
+}
+
+.auth-card {
+    width: min(100%, 29rem);
+    margin: 0 auto;
+    padding: clamp(1.5rem, 5vw, 2.75rem);
+    border: 1px solid #dce5dd;
+    border-radius: 1.25rem;
+    background: #fff;
+    box-shadow: 0 1.25rem 3rem rgb(28 54 43 / 7%);
+}
+
+.eyebrow {
+    margin: 0 0 0.65rem;
+    color: #527267;
+    font-size: 0.75rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 0.75rem;
+    font-size: clamp(2rem, 7vw, 3.15rem);
+    letter-spacing: -0.055em;
+    line-height: 1.05;
+}
+
+.auth-card h1 {
+    font-size: clamp(1.8rem, 6vw, 2.35rem);
+}
+
+.intro {
+    color: #5c6a63;
+    line-height: 1.6;
+}
+
+.form-stack {
+    display: grid;
+    gap: 1.1rem;
+    margin-top: 1.75rem;
+}
+
+.form-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.form-field label {
+    font-size: 0.9rem;
+    font-weight: 650;
+}
+
+.form-field input {
+    width: 100%;
+    min-height: 2.9rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid #bdcbc2;
+    border-radius: 0.55rem;
+    background: #fcfdfb;
+    color: inherit;
+    font: inherit;
+}
+
+.help-text,
+.help-text ul {
+    margin: 0;
+    color: #64736b;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.errorlist,
+.error-summary {
+    margin: 0;
+    color: #a33124;
+    font-size: 0.85rem;
+}
+
+.primary-button {
+    min-height: 3rem;
+    padding: 0.75rem 1rem;
+    border: 0;
+    border-radius: 0.6rem;
+    background: #176650;
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.primary-button:hover {
+    background: #105540;
+}
+
+.form-footnote {
+    margin: 1.5rem 0 0;
+    color: #5c6a63;
+    font-size: 0.9rem;
+}
+
+.home-intro {
+    max-width: 42rem;
+}
+
+.balance-card {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 2rem;
+    margin-top: 2.5rem;
+    padding: clamp(1.5rem, 5vw, 2.5rem);
+    border: 1px solid #cbdcd1;
+    border-radius: 1.25rem;
+    background: #e5efe7;
+}
+
+.balance-card h2 {
+    margin: 0;
+    color: #14543f;
+    font-size: clamp(2rem, 8vw, 3.5rem);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.05em;
+}
+
+.balance-note {
+    max-width: 13rem;
+    margin-bottom: 0.2rem;
+    color: #536b5d;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+@media (max-width: 540px) {
+    .site-header {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 1rem 1.25rem;
+    }
+
+    .site-header nav {
+        flex-wrap: wrap;
+        gap: 0.9rem;
+    }
+
+    .balance-card {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+}
+
+.header-balance {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #cbdcd1;
+    border-radius: 999px;
+    background: #e5efe7;
+    color: #14543f;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
+.flash-stack {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0 auto 1.25rem;
+}
+
+.flash {
+    margin: 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid #d6e2d8;
+    border-radius: 0.7rem;
+    background: #fff;
+    color: #344c40;
+    line-height: 1.5;
+}
+
+.flash--error {
+    border-color: #e6bcb5;
+    background: #fff4f1;
+    color: #8c2d22;
+}
+
+.flash--warning {
+    border-color: #e4d29e;
+    background: #fff9e7;
+    color: #715719;
+}
+
+.chat-workspace {
+    display: grid;
+    grid-template-columns: minmax(14rem, 0.32fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 1.25rem;
+}
+
+.conversation-sidebar,
+.chat-panel {
+    border: 1px solid #dce5dd;
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow: 0 1rem 2.5rem rgb(28 54 43 / 5%);
+}
+
+.conversation-sidebar {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+    padding: 1.1rem;
+}
+
+.sidebar-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.sidebar-heading .eyebrow,
+.sidebar-heading h2 {
+    margin-bottom: 0.25rem;
+}
+
+.sidebar-heading h2 {
+    font-size: 1.1rem;
+    letter-spacing: -0.025em;
+}
+
+.new-conversation-link {
+    display: grid;
+    width: 2.2rem;
+    height: 2.2rem;
+    place-items: center;
+    border-radius: 50%;
+    background: #176650;
+    color: #fff;
+    font-size: 1.4rem;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.new-conversation-link:hover {
+    background: #105540;
+}
+
+.conversation-list {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.conversation-link {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
+    color: #283d33;
+    text-decoration: none;
+}
+
+.conversation-link:hover,
+.conversation-link.is-current {
+    border-color: #cbdcd1;
+    background: #edf4ee;
+}
+
+.conversation-link-title {
+    overflow: hidden;
+    font-size: 0.9rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.conversation-link time {
+    color: #708077;
+    font-size: 0.75rem;
+}
+
+.sidebar-empty {
+    margin: 0;
+    color: #68786f;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.chat-panel {
+    min-width: 0;
+    padding: clamp(1.15rem, 3.5vw, 2rem);
+}
+
+.chat-panel-header {
+    margin-bottom: 1.25rem;
+}
+
+.chat-panel-header h1 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+}
+
+.balance-card {
+    margin: 1.25rem 0 1.5rem;
+}
+
+.balance-amount {
+    margin: 0;
+    color: #14543f;
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 760;
+    letter-spacing: -0.05em;
+}
+
+.message-list {
+    display: grid;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.message-card {
+    width: min(100%, 54rem);
+    padding: 1rem 1.1rem;
+    border: 1px solid #dce5dd;
+    border-radius: 0.9rem;
+    background: #fbfcfa;
+}
+
+.message-card--user {
+    justify-self: end;
+    border-color: #cbdcd1;
+    background: #eaf2eb;
+}
+
+.message-card--assistant {
+    justify-self: start;
+    background: #fff;
+}
+
+.message-card-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-bottom: 0.65rem;
+    color: #50635a;
+    font-size: 0.78rem;
+}
+
+.message-card-header time {
+    margin-left: auto;
+    color: #79877f;
+    font-variant-numeric: tabular-nums;
+}
+
+.provider-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: #e6eee8;
+    color: #245e48;
+}
+
+.message-content {
+    color: #20342b;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
+}
+
+.usage-receipt {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+    margin-top: 0.9rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid #e3eae4;
+    color: #66776d;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.usage-receipt strong {
+    margin-left: auto;
+    color: #14543f;
+    font-size: 0.88rem;
+}
+
+.request-notice {
+    margin: 1rem 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid #dce5dd;
+    border-radius: 0.7rem;
+    background: #f7faf7;
+    color: #4f6258;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.request-notice--warning {
+    border-color: #e4d29e;
+    background: #fff9e7;
+    color: #715719;
+}
+
+.empty-transcript {
+    padding: 2rem 1rem;
+    color: #62736a;
+    text-align: center;
+}
+
+.empty-transcript p:last-child {
+    margin-bottom: 0;
+}
+
+.message-form {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid #e1e9e2;
+}
+
+.message-field textarea,
+.provider-field select {
+    width: 100%;
+    border: 1px solid #bdcbc2;
+    border-radius: 0.6rem;
+    background: #fcfdfb;
+    color: #172421;
+    font: inherit;
+}
+
+.message-field textarea {
+    min-height: 7rem;
+    padding: 0.8rem;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.provider-field select {
+    min-height: 2.8rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.message-form-footer {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.provider-field {
+    width: min(100%, 21rem);
+}
+
+.provider-field small {
+    color: #708077;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.send-button {
+    min-width: 9rem;
+}
+
+.form-disclosure {
+    margin: 0;
+    color: #718078;
+    font-size: 0.76rem;
+}
+
+.form-errors {
+    color: #a33124;
+    font-size: 0.82rem;
+}
+
+.form-errors ul {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+@media (max-width: 760px) {
+    .chat-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .conversation-sidebar {
+        position: static;
+        max-height: 15rem;
+    }
+}
+
+@media (max-width: 540px) {
+    .message-form-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .provider-field {
+        width: 100%;
+    }
+
+    .send-button {
+        width: 100%;
+    }
+
+    .usage-receipt strong {
+        margin-left: 0;
+    }
+}

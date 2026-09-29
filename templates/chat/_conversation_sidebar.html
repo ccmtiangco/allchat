@@ -1,0 +1,22 @@
+<aside class="conversation-sidebar" aria-label="Conversation history">
+    <div class="sidebar-heading">
+        <div>
+            <p class="eyebrow">Library</p>
+            <h2>Conversations</h2>
+        </div>
+        <a class="new-conversation-link" href="{% url 'chat:home' %}" aria-label="Start a new conversation">+</a>
+    </div>
+    {% if conversations %}
+        <nav class="conversation-list" aria-label="Your conversations">
+            {% for item in conversations %}
+                <a class="conversation-link{% if current_conversation and current_conversation.pk == item.pk %} is-current{% endif %}"
+                   href="{% url 'chat:conversation' item.pk %}">
+                    <span class="conversation-link-title">{{ item.title }}</span>
+                    <time datetime="{{ item.updated_at|date:'c' }}">{{ item.updated_at|date:'M j, H:i' }}</time>
+                </a>
+            {% endfor %}
+        </nav>
+    {% else %}
+        <p class="sidebar-empty">Your conversation history will appear here.</p>
+    {% endif %}
+</aside>
