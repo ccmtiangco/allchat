@@ -1,0 +1,30 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}AllChat{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
+</head>
+<body>
+    <header class="site-header">
+        <a class="brand" href="{% url 'chat:home' %}">AllChat</a>
+        <nav aria-label="Account">
+            {% if user.is_authenticated %}
+                <span class="account-name">{{ user.username }}</span>
+                <form method="post" action="{% url 'chat:logout' %}">
+                    {% csrf_token %}
+                    <button class="link-button" type="submit">Log out</button>
+                </form>
+            {% else %}
+                <a href="{% url 'chat:login' %}">Log in</a>
+                <a href="{% url 'chat:signup' %}">Create account</a>
+            {% endif %}
+        </nav>
+    </header>
+    <main class="page-shell">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

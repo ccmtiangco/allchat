@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Home | AllChat{% endblock %}
+
+{% block content %}
+<section class="home-intro">
+    <p class="eyebrow">Your workspace</p>
+    <h1>Welcome, {{ user.username }}.</h1>
+    <p class="intro">Your account is ready. Chat tools are coming next.</p>
+</section>
+<section class="balance-card" aria-labelledby="balance-title">
+    <div>
+        <p class="eyebrow">Available wallet balance</p>
+        <h2 id="balance-title">{{ wallet.formatted_balance }}</h2>
+    </div>
+    <p class="balance-note">Your balance is shown to six decimal places.</p>
+</section>
+{% endblock %}
