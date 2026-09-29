@@ -45,24 +45,29 @@ def delete_conversation(owner, conversation_id):
     conversation.delete()
 
 
+def _get_latest_unbilled_user_message(owner, conversation_id, message_id):
+    conversation = Conversation.objects.select_for_update().get(
+        pk=conversation_id,
+        owner=owner,
+    )
+    if conversation.usage_requests.exists():
+        raise ValidationError('Messages cannot be changed after a usage request exists.')
+    message = conversation.messages.select_for_update().get(
+        pk=message_id,
+        role=Message.Role.USER,
+    )
+    latest_message = conversation.messages.order_by('-created_at', '-id').first()
+    if latest_message.pk != message.pk:
+        raise ValidationError('Only the latest user message can be changed.')
+    return conversation, message
+
+
 def edit_latest_user_message(owner, conversation_id, message_id, content):
     if not content.strip():
         raise ValidationError('A message cannot be empty.')
 
     with transaction.atomic():
-        conversation = Conversation.objects.select_for_update().get(
-            pk=conversation_id,
-            owner=owner,
-        )
-        if conversation.usage_requests.exists():
-            raise ValidationError('Messages cannot be edited after a usage request exists.')
-        message = conversation.messages.select_for_update().get(
-            pk=message_id,
-            role=Message.Role.USER,
-        )
-        latest_message = conversation.messages.order_by('-created_at', '-id').first()
-        if latest_message.pk != message.pk:
-            raise ValidationError('Only the latest user message can be edited.')
+        _, message = _get_latest_unbilled_user_message(owner, conversation_id, message_id)
         message.content = content
         message.save(update_fields=('content',))
         return message
@@ -70,19 +75,11 @@ def edit_latest_user_message(owner, conversation_id, message_id, content):
 
 def delete_latest_user_message(owner, conversation_id, message_id):
     with transaction.atomic():
-        conversation = Conversation.objects.select_for_update().get(
-            pk=conversation_id,
-            owner=owner,
+        conversation, message = _get_latest_unbilled_user_message(
+            owner,
+            conversation_id,
+            message_id,
         )
-        if conversation.usage_requests.exists():
-            raise ValidationError('Messages cannot be deleted after a usage request exists.')
-        message = conversation.messages.select_for_update().get(
-            pk=message_id,
-            role=Message.Role.USER,
-        )
-        latest_message = conversation.messages.order_by('-created_at', '-id').first()
-        if latest_message.pk != message.pk:
-            raise ValidationError('Only the latest user message can be deleted.')
         message.delete()
         conversation.updated_at = timezone.now()
         fields = ['updated_at']
