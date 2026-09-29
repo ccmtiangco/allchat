@@ -128,6 +128,12 @@ class UsageRequest(models.Model):
         USAGE_UNKNOWN = 'usage_unknown', 'Usage unknown'
         RESERVATION_EXCEEDED = 'reservation_exceeded', 'Reservation exceeded'
 
+    class RetainedQuerySet(models.QuerySet):
+        def delete(self):
+            raise TypeError('Usage request records are retained for audit.')
+
+    objects = RetainedQuerySet.as_manager()
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -273,6 +279,9 @@ class UsageRequest(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Usage request records are retained for audit.')
 
     def clean(self):
         errors = {}

@@ -5,7 +5,6 @@ from unittest import skipUnless
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import close_old_connections, connection
-from django.db.models.deletion import ProtectedError
 from django.test import TestCase, TransactionTestCase, override_settings
 
 from ..choices import ProviderInterface
@@ -76,7 +75,7 @@ class BillingModelAndServiceTests(TestCase):
             entry_type=WalletLedgerEntry.EntryType.RESERVATION
         )
 
-        with self.assertRaises(ProtectedError):
+        with self.assertRaises(ValidationError):
             request.delete()
 
         reservation.refresh_from_db()
@@ -133,6 +132,17 @@ class BillingModelAndServiceTests(TestCase):
                 ProviderInterface.OPENAI,
                 'foreign-conversation',
             )
+
+    def test_failed_usage_records_cannot_be_deleted(self):
+        request = self.make_request()
+        failed = fail_before_upstream(request)
+
+        with self.assertRaises(ValidationError):
+            failed.delete()
+        with self.assertRaises(TypeError):
+            UsageRequest.objects.filter(pk=failed.pk).delete()
+
+        self.assertTrue(UsageRequest.objects.filter(pk=failed.pk).exists())
 
     def test_usage_record_save_rejects_a_conversation_owned_by_another_user(self):
         other_user = User.objects.create_user(username='foreign-owner', password='password')
