@@ -1,10 +1,14 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
 
-from ..billing.services import create_usage_request, fail_before_upstream
+from ..billing.models import INITIAL_BALANCE_MICRO_USD, UsageRequest
+from ..billing.services import InsufficientBalance, create_usage_request, fail_before_upstream
 from ..choices import ProviderInterface
+from ..proxy.router import ProxyConfigurationError, ProxyError, ProxyResponse
 from .models import (
     DEFAULT_CONVERSATION_TITLE,
     MAX_GENERATED_TITLE_LENGTH,
@@ -21,6 +25,7 @@ from .services import (
     get_owned_conversation,
     rename_conversation,
 )
+from .orchestration import submit_message
 
 User = get_user_model()
 
@@ -208,3 +213,182 @@ class ConversationModelDefaultsTests(TestCase):
         conversation = Conversation.objects.create(owner=user)
 
         self.assertEqual(conversation.title, DEFAULT_CONVERSATION_TITLE)
+
+
+class ChatOrchestrationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='orchestrator-user', password='password')
+
+    def response(self, provider, *, text='Provider answer', input_tokens=12, output_tokens=5):
+        return ProxyResponse(
+            provider=provider,
+            model='configured-model',
+            text=text,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            finish_reason='stop',
+            completion_status='complete',
+            upstream_request_id='upstream-test-id',
+        )
+
+    def test_new_message_routes_once_and_settles_exact_usage(self):
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            return_value=self.response(ProviderInterface.OPENAI),
+        ) as route:
+            result = submit_message(
+                user=self.user,
+                content='Explain this request',
+                provider=ProviderInterface.OPENAI,
+                idempotency_key='turn-1',
+            )
+
+            retry = submit_message(
+                user=self.user,
+                content='Explain this request',
+                provider=ProviderInterface.OPENAI,
+                idempotency_key='turn-1',
+            )
+
+        self.assertEqual(route.call_count, 1)
+        self.assertFalse(result.duplicate)
+        self.assertTrue(retry.duplicate)
+        self.assertEqual(result.conversation.pk, retry.conversation.pk)
+        self.assertEqual(result.usage_request.status, UsageRequest.Status.SUCCEEDED)
+        self.assertEqual(result.usage_request.total_tokens, 17)
+        self.assertEqual(result.usage_request.charge_micro_usd, 34)
+        self.assertEqual(result.usage_request.user_message.content, 'Explain this request')
+        self.assertEqual(result.assistant_message.provider, ProviderInterface.OPENAI)
+        self.assertEqual(result.assistant_message.content, 'Provider answer')
+        self.assertEqual(result.finish_reason, 'stop')
+        self.assertEqual(result.completion_status, 'complete')
+        self.assertEqual(result.conversation.messages.count(), 2)
+        self.user.wallet.refresh_from_db()
+        self.assertEqual(self.user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD - 34)
+
+    def test_provider_can_change_between_turns(self):
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            side_effect=[
+                self.response(ProviderInterface.ANTHROPIC, text='First provider'),
+                self.response(ProviderInterface.GOOGLE, text='Second provider'),
+            ],
+        ) as route:
+            first = submit_message(
+                user=self.user,
+                content='First turn',
+                provider=ProviderInterface.ANTHROPIC,
+                idempotency_key='provider-turn-1',
+            )
+            second = submit_message(
+                user=self.user,
+                content='Second turn',
+                provider=ProviderInterface.GOOGLE,
+                idempotency_key='provider-turn-2',
+                conversation_id=first.conversation.pk,
+            )
+
+        self.assertEqual(route.call_count, 2)
+        self.assertEqual(first.assistant_message.provider, ProviderInterface.ANTHROPIC)
+        self.assertEqual(second.assistant_message.provider, ProviderInterface.GOOGLE)
+        self.assertEqual(
+            list(first.conversation.messages.values_list('role', 'provider')),
+            [
+                ('user', None),
+                ('assistant', ProviderInterface.ANTHROPIC),
+                ('user', None),
+                ('assistant', ProviderInterface.GOOGLE),
+            ],
+        )
+
+    def test_insufficient_balance_does_not_call_the_proxy(self):
+        wallet = self.user.wallet
+        wallet.balance_micro_usd = 0
+        wallet.save(update_fields=('balance_micro_usd',))
+
+        with patch('chat.conversations.orchestration.route_request') as route:
+            with self.assertRaises(InsufficientBalance):
+                submit_message(
+                    user=self.user,
+                    content='Too expensive',
+                    provider=ProviderInterface.OPENAI,
+                    idempotency_key='no-balance',
+                )
+
+        route.assert_not_called()
+        request = UsageRequest.objects.get(idempotency_key='no-balance')
+        self.assertEqual(request.status, UsageRequest.Status.FAILED_BEFORE_UPSTREAM)
+        self.assertEqual(request.conversation.messages.filter(role=Message.Role.USER).count(), 1)
+
+    def test_ambiguous_proxy_failure_keeps_reservation_and_duplicate_does_not_retry(self):
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            side_effect=ProxyError('temporary upstream failure'),
+        ) as route:
+            with self.assertRaises(ProxyError):
+                submit_message(
+                    user=self.user,
+                    content='Could not complete',
+                    provider=ProviderInterface.OPENAI,
+                    idempotency_key='ambiguous-turn',
+                )
+
+            duplicate = submit_message(
+                user=self.user,
+                content='Could not complete',
+                provider=ProviderInterface.OPENAI,
+                idempotency_key='ambiguous-turn',
+            )
+
+        self.assertEqual(route.call_count, 1)
+        self.assertTrue(duplicate.duplicate)
+        self.assertEqual(
+            duplicate.usage_request.status,
+            UsageRequest.Status.RECONCILIATION_REQUIRED,
+        )
+        self.assertEqual(
+            duplicate.usage_request.reconciliation_reason,
+            UsageRequest.ReconciliationReason.USAGE_UNKNOWN,
+        )
+        self.assertIsNone(duplicate.usage_request.input_tokens)
+        self.assertGreater(duplicate.usage_request.reserved_micro_usd, 0)
+
+    def test_missing_proxy_configuration_releases_reservation_before_upstream(self):
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            side_effect=ProxyConfigurationError('provider key is missing'),
+        ) as route:
+            with self.assertRaises(ProxyConfigurationError):
+                submit_message(
+                    user=self.user,
+                    content='Configuration failure',
+                    provider=ProviderInterface.OPENAI,
+                    idempotency_key='missing-key',
+                )
+
+        route.assert_called_once()
+        request = UsageRequest.objects.get(idempotency_key='missing-key')
+        self.assertEqual(request.status, UsageRequest.Status.FAILED_BEFORE_UPSTREAM)
+        self.assertTrue(
+            request.ledger_entries.filter(
+                entry_type='release',
+            ).exists()
+        )
+        self.user.wallet.refresh_from_db()
+        self.assertEqual(self.user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD)
+
+    def test_foreign_conversation_is_not_sent_to_the_proxy(self):
+        other_user = User.objects.create_user(username='other-chat-user', password='password')
+        conversation, _ = Conversation.create_from_first_message(other_user, 'Private')
+
+        with patch('chat.conversations.orchestration.route_request') as route:
+            with self.assertRaises(Conversation.DoesNotExist):
+                submit_message(
+                    user=self.user,
+                    content='Attempted access',
+                    provider=ProviderInterface.OPENAI,
+                    idempotency_key='foreign-turn',
+                    conversation_id=conversation.pk,
+                )
+
+        route.assert_not_called()

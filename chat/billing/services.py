@@ -34,7 +34,7 @@ def calculate_charge_micro_usd(input_tokens, output_tokens):
     return (input_tokens + output_tokens) * 2
 
 
-def _normalize_idempotency_key(idempotency_key):
+def normalize_idempotency_key(idempotency_key):
     if not isinstance(idempotency_key, str):
         raise ValueError('The idempotency key must be a string.')
     idempotency_key = idempotency_key.strip()
@@ -56,21 +56,33 @@ def provision_initial_wallet(user, *, using=None):
     )
 
 
-def create_usage_request(user, conversation, provider, idempotency_key):
+def create_usage_request(user, conversation, provider, idempotency_key, *, user_message=None):
     if not conversation.is_owned_by(user):
         raise PermissionError('The conversation does not belong to the usage owner.')
     if provider not in ProviderInterface.values:
         raise ValueError('Unsupported provider interface.')
 
-    idempotency_key = _normalize_idempotency_key(idempotency_key)
+    idempotency_key = normalize_idempotency_key(idempotency_key)
 
     request, created = UsageRequest.objects.get_or_create(
         user=user,
         idempotency_key=idempotency_key,
-        defaults={'conversation': conversation, 'provider': provider},
+        defaults={
+            'conversation': conversation,
+            'provider': provider,
+            'user_message': user_message,
+        },
     )
     if not created and (
-        request.conversation_id != conversation.pk or request.provider != provider
+        request.conversation_id != conversation.pk
+        or request.provider != provider
+        or (
+            user_message is not None
+            and (
+                request.user_message is None
+                or request.user_message.content != user_message.content
+            )
+        )
     ):
         raise IdempotencyConflict('The idempotency key is already bound to another request.')
     return request, created
@@ -259,7 +271,7 @@ def mark_usage_unknown(request, *, upstream_request_id=''):
 def refund_usage(request, amount_micro_usd, *, idempotency_key, metadata=None):
     if type(amount_micro_usd) is not int or amount_micro_usd <= 0:
         raise ValueError('A refund must be a positive integer amount in micro-dollars.')
-    idempotency_key = _normalize_idempotency_key(idempotency_key)
+    idempotency_key = normalize_idempotency_key(idempotency_key)
 
     with transaction.atomic():
         locked_request = UsageRequest.objects.select_for_update().get(pk=request.pk)

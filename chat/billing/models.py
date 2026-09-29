@@ -144,6 +144,13 @@ class UsageRequest(models.Model):
         on_delete=models.PROTECT,
         related_name='usage_requests',
     )
+    user_message = models.OneToOneField(
+        'chat.Message',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='user_usage_request',
+    )
     assistant_message = models.OneToOneField(
         'chat.Message',
         null=True,
@@ -297,6 +304,11 @@ class UsageRequest(models.Model):
         if self.user_id and self.conversation_id:
             if not self.conversation.is_owned_by(self.user):
                 errors['conversation'] = 'The conversation must belong to the usage owner.'
+        if self.user_message_id:
+            if self.user_message.conversation_id != self.conversation_id:
+                errors['user_message'] = 'The user message must belong to this conversation.'
+            if self.user_message.role != 'user':
+                errors['user_message'] = 'Usage can only be linked to a user message.'
         if self.assistant_message_id:
             if self.assistant_message.conversation_id != self.conversation_id:
                 errors['assistant_message'] = 'The assistant message must belong to this conversation.'
