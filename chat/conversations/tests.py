@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from ..billing.services import create_usage_request, reserve_usage
+from ..billing.services import create_usage_request, fail_before_upstream
 from ..choices import ProviderInterface
 from .models import (
     DEFAULT_CONVERSATION_TITLE,
@@ -157,20 +157,23 @@ class ConversationAndMessageTests(TestCase):
         delete_conversation(self.user, conversation.pk)
         self.assertFalse(Conversation.objects.filter(pk=conversation.pk).exists())
 
-    def test_conversation_with_wallet_ledger_entries_cannot_be_deleted(self):
-        conversation, _ = Conversation.create_from_first_message(self.user, 'Billed history')
+    def test_failed_usage_record_is_preserved_when_deleting_conversation(self):
+        conversation, _ = Conversation.create_from_first_message(self.user, 'Failed history')
         request, _ = create_usage_request(
             self.user,
             conversation,
             ProviderInterface.OPENAI,
             'delete-protection',
         )
-        reserve_usage(request, maximum_input_tokens=10, maximum_output_tokens=0)
+        failed = fail_before_upstream(request)
+        self.assertFalse(failed.ledger_entries.exists())
 
         with self.assertRaises(ValidationError):
             delete_conversation(self.user, conversation.pk)
 
         self.assertTrue(Conversation.objects.filter(pk=conversation.pk).exists())
+        self.assertEqual(failed.status, 'failed_before_upstream')
+        self.assertEqual(conversation.usage_requests.count(), 1)
 
     def test_message_edit_and_delete_are_owner_scoped(self):
         conversation, message = Conversation.create_from_first_message(self.user, 'Original prompt')

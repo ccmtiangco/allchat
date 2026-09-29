@@ -2,7 +2,6 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from ..billing.models import WalletLedgerEntry
 from .models import DEFAULT_CONVERSATION_TITLE, Conversation, Message
 
 MAX_CONTEXT_CHARACTERS = 32_000
@@ -48,8 +47,8 @@ def delete_conversation(owner, conversation_id):
     with transaction.atomic():
         conversation = _get_owned_conversation(owner, conversation_id, lock=True)
         usage_requests = list(conversation.usage_requests.select_for_update())
-        if WalletLedgerEntry.objects.filter(related_request__in=usage_requests).exists():
-            raise ValidationError('Conversations with wallet ledger entries cannot be deleted.')
+        if usage_requests:
+            raise ValidationError('Conversations with usage requests cannot be deleted.')
         conversation.delete()
 
 
