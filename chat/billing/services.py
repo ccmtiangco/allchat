@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -83,6 +84,8 @@ def reserve_usage(request, *, maximum_input_tokens, maximum_output_tokens):
         or maximum_output_tokens < 0
     ):
         raise ValueError('Token limits must be non-negative integers.')
+    if maximum_output_tokens > settings.MAX_CHAT_OUTPUT_TOKENS:
+        raise ValueError('The output token limit exceeds MAX_CHAT_OUTPUT_TOKENS.')
     maximum_total_tokens = maximum_input_tokens + maximum_output_tokens
     if maximum_total_tokens == 0:
         raise ValueError('The maximum total token count must be positive.')

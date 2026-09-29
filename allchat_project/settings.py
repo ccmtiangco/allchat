@@ -116,6 +116,9 @@ ANTHROPIC_PROXY_MODEL = os.getenv('ANTHROPIC_PROXY_MODEL', 'claude-haiku-4-5-202
 GOOGLE_PROXY_MODEL = os.getenv('GOOGLE_PROXY_MODEL', 'gemini-3.8-flash')
 PROXY_CONNECT_TIMEOUT = int(os.getenv('PROXY_CONNECT_TIMEOUT', '5'))
 PROXY_READ_TIMEOUT = int(os.getenv('PROXY_READ_TIMEOUT', '60'))
+MAX_CHAT_OUTPUT_TOKENS = int(os.getenv('MAX_CHAT_OUTPUT_TOKENS', '2048'))
+if MAX_CHAT_OUTPUT_TOKENS <= 0:
+    raise ImproperlyConfigured('MAX_CHAT_OUTPUT_TOKENS must be a positive integer.')
 
 if not DEBUG:
     missing_proxy_keys = [

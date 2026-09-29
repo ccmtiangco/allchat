@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import close_old_connections, connection
 from django.db.models.deletion import ProtectedError
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 
 from ..choices import ProviderInterface
 from ..conversations.models import Conversation, Message
@@ -222,6 +222,17 @@ class BillingModelAndServiceTests(TestCase):
 
         request.refresh_from_db()
         self.user.wallet.refresh_from_db()
+        self.assertEqual(request.status, UsageRequest.Status.PENDING)
+        self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD)
+
+    @override_settings(MAX_CHAT_OUTPUT_TOKENS=16)
+    def test_reservation_rejects_output_caps_above_configured_limit(self):
+        request = self.make_request()
+
+        with self.assertRaises(ValueError):
+            reserve_usage(request, maximum_input_tokens=10, maximum_output_tokens=17)
+
+        request.refresh_from_db()
         self.assertEqual(request.status, UsageRequest.Status.PENDING)
         self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD)
 

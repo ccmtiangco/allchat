@@ -135,7 +135,7 @@ class UsageRequest(models.Model):
     )
     conversation = models.ForeignKey(
         'chat.Conversation',
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='usage_requests',
     )
     assistant_message = models.OneToOneField(

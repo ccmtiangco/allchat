@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase
 
 from ..billing.services import create_usage_request, fail_before_upstream
@@ -174,6 +175,10 @@ class ConversationAndMessageTests(TestCase):
         self.assertTrue(Conversation.objects.filter(pk=conversation.pk).exists())
         self.assertEqual(failed.status, 'failed_before_upstream')
         self.assertEqual(conversation.usage_requests.count(), 1)
+        with self.assertRaises(ProtectedError):
+            conversation.delete()
+        with self.assertRaises(ProtectedError):
+            Conversation.objects.filter(pk=conversation.pk).delete()
 
     def test_message_edit_and_delete_are_owner_scoped(self):
         conversation, message = Conversation.create_from_first_message(self.user, 'Original prompt')
