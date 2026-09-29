@@ -24,7 +24,6 @@ class AuthenticationViewsTests(TestCase):
             reverse('chat:signup'),
             {
                 'username': 'new-user',
-                'email': 'new-user@example.com',
                 'password1': 'A-strong-password-8675309',
                 'password2': 'A-strong-password-8675309',
             },
