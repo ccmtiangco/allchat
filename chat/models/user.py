@@ -10,14 +10,6 @@ class User(AbstractUser):
         with transaction.atomic(using=using):
             super().save(*args, **kwargs)
             if is_new:
-                from ..billing.models import INITIAL_BALANCE_MICRO_USD, Wallet, WalletLedgerEntry
+                from ..billing.services import provision_initial_wallet
 
-                wallet = Wallet.objects.db_manager(using).create(
-                    user=self,
-                    balance_micro_usd=INITIAL_BALANCE_MICRO_USD,
-                )
-                WalletLedgerEntry.objects.db_manager(using).create(
-                    wallet=wallet,
-                    entry_type=WalletLedgerEntry.EntryType.INITIAL_CREDIT,
-                    amount_micro_usd=INITIAL_BALANCE_MICRO_USD,
-                )
+                provision_initial_wallet(self, using=using)
