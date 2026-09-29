@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
+from django.urls import reverse
 
 from ..billing.models import INITIAL_BALANCE_MICRO_USD, UsageRequest
 from ..billing.services import InsufficientBalance, create_usage_request, fail_before_upstream
@@ -266,6 +267,43 @@ class ChatOrchestrationTests(TestCase):
         self.user.wallet.refresh_from_db()
         self.assertEqual(self.user.wallet.balance_micro_usd, INITIAL_BALANCE_MICRO_USD - 34)
 
+    def test_server_rendered_chat_form_posts_and_redirects_to_history(self):
+        self.client.force_login(self.user)
+        home = self.client.get(reverse('chat:home'))
+        self.assertContains(home, '$5.000000')
+        self.assertContains(home, 'OpenAI-compatible')
+        self.assertContains(home, 'Anthropic-compatible')
+        self.assertContains(home, 'Google-compatible')
+        self.assertContains(home, 'csrfmiddlewaretoken')
+
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            return_value=self.response(ProviderInterface.GOOGLE, text='Rendered answer'),
+        ) as route:
+            response = self.client.post(
+                reverse('chat:send_message'),
+                {
+                    'content': 'View test prompt',
+                    'provider': ProviderInterface.GOOGLE,
+                    'conversation_id': '',
+                    'idempotency_key': 'view-test-turn',
+                },
+            )
+
+        route.assert_called_once()
+        request = UsageRequest.objects.get(idempotency_key='view-test-turn')
+        self.assertRedirects(
+            response,
+            reverse('chat:conversation', kwargs={'conversation_id': request.conversation_id}),
+        )
+        detail = self.client.get(response.url)
+        self.assertContains(detail, 'View test prompt')
+        self.assertContains(detail, 'Rendered answer')
+        self.assertContains(detail, 'Google-compatible')
+        self.assertContains(detail, '$0.000034')
+        self.assertContains(detail, '$4.999966')
+        self.assertContains(detail, 'View test prompt')
+
     def test_provider_can_change_between_turns(self):
         with patch(
             'chat.conversations.orchestration.route_request',
@@ -392,3 +430,64 @@ class ChatOrchestrationTests(TestCase):
                 )
 
         route.assert_not_called()
+
+    def test_home_renders_balance_and_provider_selection(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('chat:home'))
+
+        self.assertTemplateUsed(response, 'chat/home.html')
+        self.assertContains(response, '$5.000000')
+        self.assertContains(response, 'OpenAI-compatible')
+        self.assertContains(response, 'Anthropic-compatible')
+        self.assertContains(response, 'Google-compatible')
+        self.assertContains(response, 'Conversations')
+
+    def test_conversation_page_renders_roles_usage_and_exact_debit(self):
+        self.client.force_login(self.user)
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            return_value=self.response(ProviderInterface.OPENAI),
+        ):
+            result = submit_message(
+                user=self.user,
+                content='Render this answer',
+                provider=ProviderInterface.OPENAI,
+                idempotency_key='template-turn',
+            )
+
+        response = self.client.get(
+            reverse('chat:conversation', kwargs={'conversation_id': result.conversation.pk})
+        )
+
+        self.assertTemplateUsed(response, 'chat/conversation.html')
+        self.assertContains(response, 'message-card--user')
+        self.assertContains(response, 'message-card--assistant')
+        self.assertContains(response, 'OpenAI-compatible')
+        self.assertContains(response, '12 input')
+        self.assertContains(response, '5 output')
+        self.assertContains(response, '17 total tokens')
+        self.assertContains(response, '$0.000034')
+        self.assertContains(response, '$4.999966')
+
+    def test_message_post_redirects_to_the_created_conversation(self):
+        self.client.force_login(self.user)
+        with patch(
+            'chat.conversations.orchestration.route_request',
+            return_value=self.response(ProviderInterface.GOOGLE),
+        ):
+            response = self.client.post(
+                reverse('chat:send_message'),
+                {
+                    'content': 'Submitted through HTML form',
+                    'provider': ProviderInterface.GOOGLE,
+                    'conversation_id': '',
+                    'idempotency_key': 'html-form-turn',
+                },
+            )
+
+        request = UsageRequest.objects.get(idempotency_key='html-form-turn')
+        self.assertRedirects(
+            response,
+            reverse('chat:conversation', kwargs={'conversation_id': request.conversation_id}),
+        )

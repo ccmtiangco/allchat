@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import logging
+from time import monotonic
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -24,6 +26,8 @@ from .services import (
     build_conversation_context,
     get_owned_conversation,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -119,6 +123,7 @@ def submit_message(*, user, content, provider, idempotency_key, conversation_id=
         fail_before_upstream(request)
         raise
 
+    request_started = monotonic()
     try:
         response = route_request(
             provider,
@@ -127,9 +132,25 @@ def submit_message(*, user, content, provider, idempotency_key, conversation_id=
         )
     except ProxyConfigurationError:
         fail_before_upstream(request)
+        logger.warning(
+            'Proxy configuration unavailable',
+            extra={
+                'request_id': request.pk,
+                'provider': provider,
+                'status': UsageRequest.Status.FAILED_BEFORE_UPSTREAM,
+            },
+        )
         raise
     except ProxyError:
         mark_usage_unknown(request)
+        logger.warning(
+            'Proxy request outcome requires reconciliation',
+            extra={
+                'request_id': request.pk,
+                'provider': provider,
+                'status': UsageRequest.Status.RECONCILIATION_REQUIRED,
+            },
+        )
         raise
 
     assistant_message = append_message(
@@ -145,6 +166,15 @@ def submit_message(*, user, content, provider, idempotency_key, conversation_id=
         response.output_tokens,
         assistant_message=assistant_message,
         upstream_request_id=response.upstream_request_id,
+    )
+    logger.info(
+        'Proxy request settled',
+        extra={
+            'request_id': settled_request.pk,
+            'provider': provider,
+            'status': settled_request.status,
+            'latency_ms': round((monotonic() - request_started) * 1_000),
+        },
     )
     return ChatTurnResult(
         conversation=conversation,

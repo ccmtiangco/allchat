@@ -3,11 +3,12 @@ import subprocess
 import sys
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib import admin
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from .models import INITIAL_BALANCE_MICRO_USD, WalletLedgerEntry
-
+from .billing.models import INITIAL_BALANCE_MICRO_USD, UsageRequest, Wallet, WalletLedgerEntry
+from .conversations.models import Conversation, Message
 User = get_user_model()
 
 
@@ -110,3 +111,49 @@ class ConfigurationTests(TestCase):
         self.assertIn('ANTHROPIC_PROXY_KEY', result.stderr)
         self.assertIn('GOOGLE_PROXY_KEY', result.stderr)
         self.assertNotIn('test-secret-that-must-not-be-printed', result.stderr)
+
+
+class AdminConfigurationTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(
+            username='admin-config-user',
+            email='admin-config@example.com',
+            password='A-strong-password-8675309',
+        )
+        self.request = RequestFactory().get('/admin/')
+        self.request.user = self.admin_user
+
+    def test_required_models_are_registered_in_django_admin(self):
+        for model in (User, Wallet, WalletLedgerEntry, Conversation, Message, UsageRequest):
+            with self.subTest(model=model.__name__):
+                self.assertIn(model, admin.site._registry)
+
+    def test_financial_audit_records_are_read_only_in_admin(self):
+        ledger_admin = admin.site._registry[WalletLedgerEntry]
+        usage_admin = admin.site._registry[UsageRequest]
+        wallet_admin = admin.site._registry[Wallet]
+
+        self.assertFalse(ledger_admin.has_add_permission(self.request))
+        self.assertFalse(ledger_admin.has_change_permission(self.request))
+        self.assertFalse(ledger_admin.has_delete_permission(self.request))
+        self.assertEqual(
+            set(ledger_admin.get_readonly_fields(self.request)),
+            {field.name for field in WalletLedgerEntry._meta.fields},
+        )
+        self.assertFalse(usage_admin.has_add_permission(self.request))
+        self.assertFalse(usage_admin.has_delete_permission(self.request))
+        self.assertEqual(
+            set(usage_admin.get_readonly_fields(self.request)),
+            {field.name for field in UsageRequest._meta.fields},
+        )
+        self.assertIn('balance_micro_usd', wallet_admin.get_readonly_fields(self.request))
+
+    def test_wallet_adjustment_action_requires_amount_and_reason_fields(self):
+        wallet_admin = admin.site._registry[Wallet]
+        usage_admin = admin.site._registry[UsageRequest]
+
+        self.assertIn('adjust_wallet_balances', wallet_admin.actions)
+        self.assertIn('amount_micro_usd', wallet_admin.action_form.base_fields)
+        self.assertIn('reason', wallet_admin.action_form.base_fields)
+        self.assertIn('release_unknown_reservations', usage_admin.actions)
+        self.assertIn('reason', usage_admin.action_form.base_fields)

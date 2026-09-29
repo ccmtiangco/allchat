@@ -9,6 +9,11 @@ INITIAL_BALANCE_MICRO_USD = 5_000_000
 PRICING_VERSION = 'flat-2-micro-usd-per-token-v1'
 
 
+def format_micro_usd(amount_micro_usd):
+    dollars, fractional = divmod(amount_micro_usd, 1_000_000)
+    return f'${dollars}.{fractional:06d}'
+
+
 class Wallet(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -19,8 +24,7 @@ class Wallet(models.Model):
 
     @property
     def formatted_balance(self):
-        dollars, micro_dollars = divmod(self.balance_micro_usd, 1_000_000)
-        return f'${dollars}.{micro_dollars:06d}'
+        return format_micro_usd(self.balance_micro_usd)
 
     def __str__(self):
         return f'{self.user} wallet ({self.formatted_balance})'
@@ -33,6 +37,8 @@ class WalletLedgerEntry(models.Model):
         USAGE_DEBIT = 'usage_debit', 'Settled usage'
         RELEASE = 'release', 'Reservation release'
         REFUND = 'refund', 'Refund'
+        ADMIN_CREDIT = 'admin_credit', 'Administrative credit'
+        ADMIN_DEBIT = 'admin_debit', 'Administrative debit'
 
     class AppendOnlyQuerySet(models.QuerySet):
         def update(self, **kwargs):
@@ -75,6 +81,8 @@ class WalletLedgerEntry(models.Model):
                         'usage_debit',
                         'release',
                         'refund',
+                        'admin_credit',
+                        'admin_debit',
                     )
                 ),
                 name='wallet_ledger_entry_type_supported',
@@ -98,9 +106,10 @@ class WalletLedgerEntry(models.Model):
             self.EntryType.INITIAL_CREDIT,
             self.EntryType.RELEASE,
             self.EntryType.REFUND,
+            self.EntryType.ADMIN_CREDIT,
         }:
             return self.amount_micro_usd
-        if self.entry_type == self.EntryType.RESERVATION:
+        if self.entry_type in {self.EntryType.RESERVATION, self.EntryType.ADMIN_DEBIT}:
             return -self.amount_micro_usd
         return 0
 
@@ -123,6 +132,7 @@ class UsageRequest(models.Model):
         SUCCEEDED = 'succeeded', 'Succeeded'
         FAILED_BEFORE_UPSTREAM = 'failed_before_upstream', 'Failed before upstream'
         RECONCILIATION_REQUIRED = 'reconciliation_required', 'Reconciliation required'
+        RECONCILED_RELEASED = 'reconciled_released', 'Reconciled and released'
 
     class ReconciliationReason(models.TextChoices):
         USAGE_UNKNOWN = 'usage_unknown', 'Usage unknown'
@@ -199,6 +209,7 @@ class UsageRequest(models.Model):
                         'succeeded',
                         'failed_before_upstream',
                         'reconciliation_required',
+                        'reconciled_released',
                     )
                 ),
                 name='usage_status_supported',
@@ -247,7 +258,14 @@ class UsageRequest(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
-                    ~Q(status__in=('reserved', 'succeeded', 'reconciliation_required'))
+                    ~Q(
+                        status__in=(
+                            'reserved',
+                            'succeeded',
+                            'reconciliation_required',
+                            'reconciled_released',
+                        )
+                    )
                     | Q(
                         reserved_input_tokens__isnull=False,
                         reserved_output_tokens__isnull=False,
@@ -321,3 +339,11 @@ class UsageRequest(models.Model):
 
     def __str__(self):
         return f'{self.provider} usage ({self.status}) for {self.user}'
+
+    @property
+    def formatted_charge(self):
+        return format_micro_usd(self.charge_micro_usd)
+
+    @property
+    def formatted_reservation(self):
+        return format_micro_usd(self.reserved_micro_usd)

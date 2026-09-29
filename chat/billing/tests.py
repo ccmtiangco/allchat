@@ -20,11 +20,13 @@ from .services import (
     IdempotencyConflict,
     InsufficientBalance,
     InvalidRequestState,
+    admin_adjust_wallet,
     calculate_charge_micro_usd,
     create_usage_request,
     fail_before_upstream,
     mark_usage_unknown,
     refund_usage,
+    release_unknown_usage,
     reserve_usage,
     settle_usage,
 )
@@ -356,6 +358,58 @@ class BillingModelAndServiceTests(TestCase):
         )
         with self.assertRaises(BillingError):
             refund_usage(request, 1_501, idempotency_key='support-refund-2')
+
+    def test_admin_wallet_adjustments_are_reasoned_ledger_entries(self):
+        admin_user = User.objects.create_superuser(
+            username='wallet-admin',
+            email='wallet-admin@example.com',
+            password='A-strong-password-8675309',
+        )
+        credit = admin_adjust_wallet(
+            self.user.wallet,
+            1_200,
+            reason='Promotional credit',
+            actor=admin_user,
+        )
+        debit = admin_adjust_wallet(
+            self.user.wallet,
+            -200,
+            reason='Correct duplicate credit',
+            actor=admin_user,
+        )
+
+        self.assertEqual(credit.entry_type, WalletLedgerEntry.EntryType.ADMIN_CREDIT)
+        self.assertEqual(credit.balance_delta_micro_usd, 1_200)
+        self.assertEqual(credit.metadata['reason'], 'Promotional credit')
+        self.assertEqual(credit.metadata['admin_user_id'], admin_user.pk)
+        self.assertEqual(debit.entry_type, WalletLedgerEntry.EntryType.ADMIN_DEBIT)
+        self.assertEqual(debit.balance_delta_micro_usd, -200)
+        self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD + 1_000)
+
+    def test_admin_can_release_unknown_usage_with_an_audited_entry(self):
+        admin_user = User.objects.create_superuser(
+            username='reconciliation-admin',
+            email='reconciliation-admin@example.com',
+            password='A-strong-password-8675309',
+        )
+        request = self.make_request()
+        reserve_usage(request, maximum_input_tokens=100, maximum_output_tokens=20)
+        mark_usage_unknown(request, upstream_request_id='unknown-usage-id')
+
+        resolved = release_unknown_usage(
+            request,
+            reason='Confirmed no upstream charge',
+            actor=admin_user,
+        )
+
+        self.assertEqual(resolved.status, UsageRequest.Status.RECONCILED_RELEASED)
+        self.assertEqual(self.current_balance(), INITIAL_BALANCE_MICRO_USD)
+        entry = self.user.wallet.ledger_entries.get(
+            entry_type=WalletLedgerEntry.EntryType.RELEASE,
+            related_request=request,
+        )
+        self.assertEqual(entry.metadata['reason'], 'Confirmed no upstream charge')
+        self.assertEqual(entry.metadata['admin_user_id'], admin_user.pk)
 
 
 @skipUnless(connection.features.has_select_for_update, 'Database does not support row-level locks.')

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
+from uuid import uuid4
 
 from ..choices import ProviderInterface
 from .models import (
@@ -311,3 +312,71 @@ def refund_usage(request, amount_micro_usd, *, idempotency_key, metadata=None):
             related_request=locked_request,
             metadata=metadata or {},
         )
+
+
+def admin_adjust_wallet(wallet, signed_amount_micro_usd, *, reason, actor):
+    if type(signed_amount_micro_usd) is not int or signed_amount_micro_usd == 0:
+        raise ValueError('The adjustment must be a non-zero integer amount in micro-dollars.')
+    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 500:
+        raise ValueError('An adjustment reason of 1 to 500 characters is required.')
+    if not actor.is_staff:
+        raise PermissionError('Only staff users can adjust a wallet.')
+
+    amount = abs(signed_amount_micro_usd)
+    entry_type = (
+        WalletLedgerEntry.EntryType.ADMIN_CREDIT
+        if signed_amount_micro_usd > 0
+        else WalletLedgerEntry.EntryType.ADMIN_DEBIT
+    )
+    with transaction.atomic():
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        if signed_amount_micro_usd < 0 and locked_wallet.balance_micro_usd < amount:
+            raise InsufficientBalance('The wallet cannot be adjusted below zero.')
+        locked_wallet.balance_micro_usd += signed_amount_micro_usd
+        locked_wallet.save(update_fields=('balance_micro_usd',))
+        return WalletLedgerEntry.objects.create(
+            wallet=locked_wallet,
+            entry_type=entry_type,
+            amount_micro_usd=amount,
+            idempotency_key=f'admin-adjustment-{uuid4().hex}',
+            metadata={'reason': reason.strip(), 'admin_user_id': actor.pk},
+        )
+
+
+def release_unknown_usage(request, *, reason, actor):
+    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 500:
+        raise ValueError('A reconciliation reason of 1 to 500 characters is required.')
+    if not actor.is_staff:
+        raise PermissionError('Only staff users can reconcile usage.')
+
+    with transaction.atomic():
+        locked_request = UsageRequest.objects.select_for_update().get(pk=request.pk)
+        if locked_request.status == UsageRequest.Status.RECONCILED_RELEASED:
+            return locked_request
+        if (
+            locked_request.status != UsageRequest.Status.RECONCILIATION_REQUIRED
+            or locked_request.reconciliation_reason != UsageRequest.ReconciliationReason.USAGE_UNKNOWN
+        ):
+            raise InvalidRequestState('Only unknown usage requests can be released this way.')
+
+        amount = locked_request.reserved_micro_usd
+        wallet = Wallet.objects.select_for_update().get(user_id=locked_request.user_id)
+        wallet.balance_micro_usd += amount
+        wallet.save(update_fields=('balance_micro_usd',))
+        WalletLedgerEntry.objects.create(
+            wallet=wallet,
+            entry_type=WalletLedgerEntry.EntryType.RELEASE,
+            amount_micro_usd=amount,
+            idempotency_key=f'usage-{locked_request.pk}-reconciliation-release',
+            related_request=locked_request,
+            metadata={
+                'reason': reason.strip(),
+                'admin_user_id': actor.pk,
+                'resolution': 'release_unknown_usage',
+            },
+        )
+        locked_request.status = UsageRequest.Status.RECONCILED_RELEASED
+        locked_request.reconciliation_reason = None
+        locked_request.completed_at = timezone.now()
+        locked_request.save()
+        return locked_request

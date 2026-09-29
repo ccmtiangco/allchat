@@ -8,6 +8,8 @@ app_name = 'chat'
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('conversations/<int:conversation_id>/', views.conversation_detail, name='conversation'),
+    path('messages/send/', views.send_message, name='send_message'),
     path('accounts/signup/', account_views.signup, name='signup'),
     path(
         'accounts/login/',
