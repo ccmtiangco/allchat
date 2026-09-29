@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
+from ..billing.services import create_usage_request, reserve_usage
 from ..choices import ProviderInterface
 from .models import (
     DEFAULT_CONVERSATION_TITLE,
@@ -155,6 +156,21 @@ class ConversationAndMessageTests(TestCase):
         rename_conversation(self.user, conversation.pk, 'Updated title')
         delete_conversation(self.user, conversation.pk)
         self.assertFalse(Conversation.objects.filter(pk=conversation.pk).exists())
+
+    def test_conversation_with_wallet_ledger_entries_cannot_be_deleted(self):
+        conversation, _ = Conversation.create_from_first_message(self.user, 'Billed history')
+        request, _ = create_usage_request(
+            self.user,
+            conversation,
+            ProviderInterface.OPENAI,
+            'delete-protection',
+        )
+        reserve_usage(request, maximum_input_tokens=10, maximum_output_tokens=0)
+
+        with self.assertRaises(ValidationError):
+            delete_conversation(self.user, conversation.pk)
+
+        self.assertTrue(Conversation.objects.filter(pk=conversation.pk).exists())
 
     def test_message_edit_and_delete_are_owner_scoped(self):
         conversation, message = Conversation.create_from_first_message(self.user, 'Original prompt')

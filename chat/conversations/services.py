@@ -1,7 +1,8 @@
-from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 
+from ..billing.models import WalletLedgerEntry
 from .models import DEFAULT_CONVERSATION_TITLE, Conversation, Message
 
 MAX_CONTEXT_CHARACTERS = 32_000
@@ -11,16 +12,18 @@ class ContextLimitExceeded(ValueError):
     pass
 
 
+def _get_owned_conversation(owner, conversation_id, *, lock=False):
+    conversations = Conversation.objects.select_for_update() if lock else Conversation.objects
+    return conversations.get(pk=conversation_id, owner=owner)
+
+
 def get_owned_conversation(owner, conversation_id):
-    return Conversation.objects.get(pk=conversation_id, owner=owner)
+    return _get_owned_conversation(owner, conversation_id)
 
 
 def append_message(owner, conversation_id, role, content, *, provider=None):
     with transaction.atomic():
-        conversation = Conversation.objects.select_for_update().get(
-            pk=conversation_id,
-            owner=owner,
-        )
+        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
         return Message.objects.create(
             conversation=conversation,
             role=role,
@@ -34,22 +37,24 @@ def rename_conversation(owner, conversation_id, title):
     if not title or len(title) > 160:
         raise ValidationError('Conversation titles must contain 1 to 160 characters.')
 
-    conversation = Conversation.objects.get(pk=conversation_id, owner=owner)
-    conversation.title = title
-    conversation.save(update_fields=('title', 'updated_at'))
-    return conversation
+    with transaction.atomic():
+        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+        conversation.title = title
+        conversation.save(update_fields=('title', 'updated_at'))
+        return conversation
 
 
 def delete_conversation(owner, conversation_id):
-    conversation = Conversation.objects.get(pk=conversation_id, owner=owner)
-    conversation.delete()
+    with transaction.atomic():
+        conversation = _get_owned_conversation(owner, conversation_id, lock=True)
+        usage_requests = list(conversation.usage_requests.select_for_update())
+        if WalletLedgerEntry.objects.filter(related_request__in=usage_requests).exists():
+            raise ValidationError('Conversations with wallet ledger entries cannot be deleted.')
+        conversation.delete()
 
 
 def _get_latest_unbilled_user_message(owner, conversation_id, message_id):
-    conversation = Conversation.objects.select_for_update().get(
-        pk=conversation_id,
-        owner=owner,
-    )
+    conversation = _get_owned_conversation(owner, conversation_id, lock=True)
     if conversation.usage_requests.exists():
         raise ValidationError('Messages cannot be changed after a usage request exists.')
     message = conversation.messages.select_for_update().get(
